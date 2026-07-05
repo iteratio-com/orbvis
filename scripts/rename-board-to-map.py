@@ -2,10 +2,11 @@
 """Rename the OrbVis "board" domain term to "map" across a source tree.
 
 This is the board->map half of the transform that produces the built-in
-Checkmk variant ("Checkmk Maps"). It runs on the STAGED copy of the frontend
-(and later the backend), never on the canonical frontend/src — the standalone
-repo keeps "board" internally (API /boards, JSON keys, saved boards of the
-2.3-2.5 deployments stay valid).
+Checkmk variant ("Checkmk Maps"). It runs on a GENERATED copy of the source
+trees (consumer: the checkmk-integration generator pipeline, in preparation
+— see docs/architecture.md "Long-term"), never on the canonical frontend/src
+or backend/app — the standalone repo keeps "board" internally (API /boards,
+JSON keys, saved boards of the 2.3-2.5 deployments stay valid).
 
 The rename is identifier-segment aware. Every English compound that embeds
 "board" -- dashboard, keyboard, clipboard, checkerboard -- spells it lower

@@ -117,9 +117,11 @@ supported, with retry and connect-timeout handling.
 
 ## Long-term
 
-Development is moving towards OrbVis being available as a built-in
-Checkmk package, in addition to the standalone and MKP-Exchange paths
-which remain. For that path, the `upstream-checkmk/` subtree mirrors the
-eventual Checkmk source layout (`cmk/gui/orbvis/`,
-`packages/cmk-orbvis-frontend/`). It is currently a skeleton; population
-is tracked separately.
+Development is moving towards OrbVis shipping built-in with Checkmk (as
+"Checkmk Maps"), in addition to the standalone and MKP-Exchange paths
+which remain. The former `upstream-checkmk/` staging subtree was retired
+(recoverable from git history, e.g. `git log --oneline -- upstream-checkmk`
+and the parent of its removal commit); instead, the main tree
+converges step by step towards the Checkmk house conventions, and the
+built-in source tree will be generated on demand from this repository
+by a generator pipeline under `checkmk-integration/` (in preparation).

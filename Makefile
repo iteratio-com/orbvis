@@ -20,7 +20,7 @@ lint:
 	cd frontend && npm run lint
 
 type:
-	backend/.venv/bin/mypy backend/app upstream-checkmk/cmk
+	backend/.venv/bin/mypy backend/app
 	cd frontend && npm run type-check
 
 test:

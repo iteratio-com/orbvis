@@ -11,10 +11,6 @@
 target-version = "py313"
 line-length = 100
 extend-exclude = [
-  # upstream-checkmk folgt checkmks eigener Ruff/Mypy-Toolchain (geprüft gegen
-  # ~/git/checkmk master), nicht OrbVis' strengerem Superset (z.B. ARG bei
-  # API-Override-Signaturen).
-  "upstream-checkmk",
   "frontend",
   "data",
   "boards",
@@ -153,8 +149,7 @@ enable_error_code = [
 ]
 
 # cmk_plugins/ und cmk_plugins_23/ sind CMK-2.3–2.6-Kompat-Bridge-Code mit
-# try/except-ImportError-Kaskaden. Die laufen NICHT unter strict mypy —
-# der built-in-Teilbaum (upstream-checkmk/, Stufe 6) wird dagegen strict geprueft.
+# try/except-ImportError-Kaskaden. Die laufen NICHT unter strict mypy.
 exclude = ["^cmk_plugins/", "^cmk_plugins_23/"]
 
 # Bei OrbVis koennen wir die cmk.*-API-Imports nicht aufloesen, solange wir keinen

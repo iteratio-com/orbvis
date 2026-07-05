@@ -1,9 +1,0 @@
-bcrypt
-defusedxml
-fastapi
-gunicorn
-httpx
-pydantic
-python-multipart
-uvicorn
-uvicorn-worker
