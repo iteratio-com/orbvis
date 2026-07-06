@@ -35,7 +35,6 @@ const STANDALONE_COMPONENT_MAP: Record<string, string> = {
   'CmkButton.vue': 'CmkButton.vue',
   'CmkCollapsible/CmkCollapsible.vue': 'CmkCollapsible/CmkCollapsible.vue',
   'CmkColorPicker.vue': 'CmkColorPicker.vue',
-  'CmkDialog.vue': 'CmkDialog.vue',
   'CmkDropdown/CmkDropdown.vue': 'CmkDropdown/CmkDropdown.vue',
   'CmkHelpText.vue': 'CmkHelpText.vue',
   CmkIcon: 'CmkIcon/index.ts',
@@ -217,7 +216,11 @@ export default defineConfig({
         'src/test-setup.ts',
         'src/main.ts',
         'src/vendor/**', // third-party CMK stubs
-        'src/cmk-stubs/**'
+        'src/cmk-stubs/**',
+        // OrbVis-owned custom FormSpec widgets in cmk-frontend-vue
+        // layout/style — exercised through the FormSpec views, not
+        // unit-tested in isolation.
+        'src/cmk-additions/**'
       ],
       // Stand ~28% (viele views/* und components/* sind noch untested).
       // Folge-PRs heben die Schwellen inkrementell an, Ziel 30%. Schwellen mit

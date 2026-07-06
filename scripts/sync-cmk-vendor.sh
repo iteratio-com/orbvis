@@ -70,7 +70,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -d "$CMK_ROOT/.git" ]]; then
+# -e, not -d: in a linked git worktree .git is a file, not a directory.
+if [[ ! -e "$CMK_ROOT/.git" ]]; then
   echo "checkmk repo not found at $CMK_ROOT" >&2
   echo "Set CMK_ROOT=/path/to/checkmk if your clone lives elsewhere." >&2
   exit 2

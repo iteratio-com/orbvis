@@ -281,26 +281,6 @@ declare module '@cmk/components/CmkLabel.vue' {
   export default component
 }
 
-declare module '@cmk/components/CmkDialog.vue' {
-  import type { DefineComponent } from 'vue'
-  type ButtonVariant =
-    | 'primary'
-    | 'secondary'
-    | 'optional'
-    | 'success'
-    | 'warning'
-    | 'danger'
-    | 'info'
-  interface CmkDialogProps {
-    title?: string
-    message: string
-    buttons?: { title: string; variant: ButtonVariant; onclick: () => void }[]
-    variant?: 'error' | 'warning' | 'success' | 'info' | 'loading'
-  }
-  const component: DefineComponent<CmkDialogProps>
-  export default component
-}
-
 declare module '@cmk/components/CmkIcon/CmkMultitoneIcon.vue' {
   import type { DefineComponent } from 'vue'
   interface CmkMultitoneIconProps {
@@ -480,18 +460,6 @@ declare module '@cmk/form/private/FormEditDispatcher/dispatch' {
   import type { Component } from 'vue'
   export function initializeComponentRegistry(extra?: Record<string, Component>): void
   export function getComponent(type: string): unknown
-}
-
-declare module '@cmk/form/private/forms/FormOrbColor.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<Record<string, unknown>>
-  export default component
-}
-
-declare module '@cmk/form/private/forms/FormOrbHostAutocomplete.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<Record<string, unknown>>
-  export default component
 }
 
 declare module '@cmk/components/user-input/CmkLabelRequired.vue' {

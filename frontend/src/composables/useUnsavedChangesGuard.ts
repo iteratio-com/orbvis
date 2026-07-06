@@ -2,9 +2,9 @@
  * Routing guard for views with unsaved changes.
  *
  * Returns reactive state for a confirm dialog that the view can render with
- * a Checkmk-native `CmkDialog`, plus a resolver so the dialog buttons can
- * decide whether navigation goes through. Also wires the native
- * `beforeunload` listener for hard-refresh / tab-close.
+ * `OrbConfirmDialog`, plus a resolver so the dialog buttons can decide
+ * whether navigation goes through. Also wires the native `beforeunload`
+ * listener for hard-refresh / tab-close.
  */
 import type { Ref } from 'vue'
 import { onMounted, onUnmounted, ref } from 'vue'

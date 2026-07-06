@@ -11,10 +11,10 @@
  *     dispatcher's ``{ ...components, ...extra }`` order makes the
  *     override win.
  */
-import FormOrbColor from '@cmk/form/private/forms/FormOrbColor.vue'
-import FormOrbHostAutocomplete from '@cmk/form/private/forms/FormOrbHostAutocomplete.vue'
 import { type Component } from 'vue'
 
+import FormOrbColor from '@/cmk-additions/form/private/forms/FormOrbColor.vue'
+import FormOrbHostAutocomplete from '@/cmk-additions/form/private/forms/FormOrbHostAutocomplete.vue'
 import FormBooleanChoice from '@/cmk-stubs/FormBooleanChoice.vue'
 import FormMultilineText from '@/cmk-stubs/FormMultilineText.vue'
 

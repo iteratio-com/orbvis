@@ -1,22 +1,25 @@
 <template>
-  <CmkPopup :open="open" @close="$emit('cancel')">
-    <div class="orb-confirm-dialog">
-      <CmkDialog
-        v-if="open"
-        :variant="variant"
-        :title="title"
-        :message="message"
-        :buttons="dialogButtons"
-      />
+  <CmkPopupDialog :open="open" :icon="icon" :title="title" @close="$emit('cancel')">
+    <CmkParagraph v-if="message" class="orb-confirm-dialog__message">
+      {{ message }}
+    </CmkParagraph>
+    <div class="orb-confirm-dialog__actions">
+      <CmkButton :variant="confirmVariant" @click="$emit('confirm')">
+        {{ confirmLabel || _t('Confirm') }}
+      </CmkButton>
+      <CmkButton variant="secondary" @click="$emit('cancel')">
+        {{ cancelLabel || _t('Cancel') }}
+      </CmkButton>
     </div>
-  </CmkPopup>
+  </CmkPopupDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import CmkDialog from '@/components/cmk/CmkDialog'
-import CmkPopup from '@/components/cmk/CmkPopup'
+import CmkButton from '@/components/cmk/CmkButton'
+import CmkPopupDialog from '@/components/cmk/CmkPopupDialog'
+import CmkParagraph from '@/components/cmk/typography/CmkParagraph'
 
 import usei18n from '@/vendor/cmk/lib/i18n'
 
@@ -49,54 +52,26 @@ const props = withDefaults(
   }
 )
 
-const emit = defineEmits<{ confirm: []; cancel: [] }>()
+defineEmits<{ confirm: []; cancel: [] }>()
 const { _t } = usei18n()
 
-const dialogButtons = computed(() => [
-  {
-    title: props.confirmLabel || _t('Confirm'),
-    variant: props.confirmVariant,
-    onclick: () => emit('confirm')
-  },
-  {
-    title: props.cancelLabel || _t('Cancel'),
-    variant: 'secondary' as ButtonVariant,
-    onclick: () => emit('cancel')
-  }
-])
+const ICON_BY_VARIANT: Record<DialogVariant, string> = {
+  error: 'error',
+  warning: 'warning',
+  success: 'success',
+  info: 'info-circle'
+}
+const icon = computed(() => ICON_BY_VARIANT[props.variant])
 </script>
 
 <style scoped>
-.orb-confirm-dialog {
-  width: 420px;
-  max-width: 90vw;
+.orb-confirm-dialog__message {
+  margin-bottom: var(--dimension-6);
 }
 
-/* !important: CmkDialog scoped CSS hat höhere Specificity als :deep(). */
-.orb-confirm-dialog :deep(.cmk-dialog__content) {
-  padding: var(--dimension-7) var(--dimension-8) !important;
-  line-height: 1.45;
-}
-
-.orb-confirm-dialog :deep(.cmk-dialog__title) {
-  font-size: var(--font-size-large) !important;
-  margin-bottom: var(--dimension-2) !important;
-  line-height: 1.4 !important;
-}
-
-.orb-confirm-dialog :deep(.cmk-dialog__icon-box) {
-  padding: 0 var(--dimension-5) !important;
-  align-self: stretch;
-  justify-content: center;
-}
-
-.orb-confirm-dialog :deep(.cmk-dialog__icon) {
-  padding: var(--dimension-1) !important;
-}
-
-.orb-confirm-dialog :deep(.buttons) {
-  margin-top: var(--dimension-6) !important;
+.orb-confirm-dialog__actions {
   display: flex;
-  align-items: center;
+  justify-content: flex-end;
+  gap: var(--dimension-3);
 }
 </style>
