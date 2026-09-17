@@ -70,6 +70,13 @@ class GlobalSettings(BaseModel):
     line_style: Annotated[str, BeforeValidator(lambda v: v or "plain")] = "plain"
     # Object labels
     label_show: bool = True
+    # ``label_show`` above only seeds newly created objects. The override below
+    # applies to existing ones: ``None`` leaves the decision with each object
+    # (and with the board), True/False force every caption on or off.
+    label_show_override: bool | None = None
+    # Caption fallback for objects without their own label text. Boards can
+    # override it; objects with an explicit text always win.
+    label_template: str | None = None
     label_size: int = 11
     label_color: ColorString = "#ffffff"
     label_background: ColorString = "transparent"

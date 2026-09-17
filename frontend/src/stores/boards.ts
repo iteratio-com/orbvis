@@ -104,6 +104,8 @@ export const useBoardsStore = defineStore('boards', () => {
       show_in_lists: true, // BoardConfig does not carry this; list endpoint defaults it
       hover_template: cfg.hover_template ?? null,
       context_template: cfg.context_template ?? null,
+      label_show_override: cfg.label_show_override ?? null,
+      label_template: cfg.label_template ?? null,
       render_mode: cfg.render_mode ?? 'default',
       can_edit: true // the creator can always edit their new board
     })

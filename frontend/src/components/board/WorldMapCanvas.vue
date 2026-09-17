@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { authApi } from '@/api/client'
 import { useMarquee } from '@/composables/useMarquee'
@@ -38,6 +38,11 @@ import {
   objectMatchesFilter,
   passesProblemFilter
 } from '@/utils/objectFilter'
+import {
+  resolveBoardLabelOptions,
+  resolveLabelText,
+  resolveLabelVisible
+} from '@/utils/objectLabel'
 import { stateColor as stateColorFromName } from '@/utils/stateColors'
 import { escapeHtml } from '@/vendor/cmk/lib/utils'
 
@@ -55,6 +60,9 @@ const props = defineProps<{
 
 const settingsStore = useSettingsStore()
 const auth = useAuthStore()
+
+// Board-wide label overrides, merged with the global defaults (see BoardCanvas).
+const boardLabel = computed(() => resolveBoardLabelOptions(props.config, settingsStore.settings))
 
 const emit = defineEmits<{
   'object-click': [obj: BoardObjectType, event: MouseEvent]
@@ -218,7 +226,11 @@ function makeDivIcon(obj: BoardObjectType): L.DivIcon {
   const color = stateColor(obj.id)
   const size = obj.display?.image_size ?? props.config.icon_size ?? settingsStore.settings.icon_size
   const escapedName = escapeHtml(getBoardObjectName(obj))
-  const label = obj.label?.show !== false ? escapedName : ''
+  // Worldmap markers show their caption unless the object turned it off.
+  const captionText =
+    resolveLabelText(obj, props.states[obj.id], boardLabel.value.template) ||
+    getBoardObjectName(obj)
+  const label = resolveLabelVisible(obj, boardLabel.value.show, true) ? escapeHtml(captionText) : ''
 
   const TYPE_CHARS: Record<string, string> = {
     host: 'H',
@@ -655,7 +667,9 @@ function syncLines() {
     const hasStart = style === 'arrow_start' || style === 'arrow_both'
 
     const labelCfg = obj.label
-    const labelText = labelCfg?.show !== false ? (labelCfg?.text ?? '') : ''
+    const labelText = resolveLabelVisible(obj, boardLabel.value.show, true)
+      ? resolveLabelText(obj, props.states[obj.id], boardLabel.value.template)
+      : ''
     const mid = midpoint(p1, p2)
 
     if (lines.has(obj.id)) {
@@ -963,7 +977,8 @@ watch(
     props.states,
     props.selectedObjectId,
     props.selectedIds,
-    props.editMode
+    props.editMode,
+    boardLabel.value
   ],
   () => {
     // Skip the marker rebuild while a drag is in flight — setIcon would replace

@@ -455,6 +455,10 @@ export interface BoardConfig {
   click_action: ClickAction
   hover_template?: string | null
   context_template?: string | null
+  // Board-wide object-label control: `label_show_override` overrides the
+  // per-object switch, `label_template` is the caption fallback for objects without text.
+  label_show_override?: boolean | null
+  label_template?: string | null
   background_image?: string | null
   background_color?: string | null
   render_mode?: RenderMode
@@ -487,6 +491,8 @@ export interface BoardRead {
   show_in_lists?: boolean
   hover_template?: string | null
   context_template?: string | null
+  label_show_override?: boolean | null
+  label_template?: string | null
   render_mode?: RenderMode
   default_z?: number
   can_edit?: boolean
@@ -718,9 +724,12 @@ export interface GlobalSettings {
   icon_size: number
   view_type: string
   label_show: boolean
+  // Instance-wide override of the per-object label switch (null = objects decide).
+  label_show_override?: boolean | null
   label_size: number
   label_color: string
   label_background: string
+  label_template?: string | null
   url_target: string
   z: number
   line_style?: LineStyle | null

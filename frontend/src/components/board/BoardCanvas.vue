@@ -78,6 +78,7 @@
           v-bind="lineDragProps(line.id)"
           :bound-coords="boundCoordsFor(line)"
           :connection-id="config.connection_id"
+          :label-options="boardLabel"
           @line-drag-start="(evt, mode) => $emit('line-drag-start', evt, line, mode)"
           @context-menu="(evt) => onObjectContextMenu(evt, line)"
           @line-click="onLineClick(line)"
@@ -118,6 +119,7 @@
         :resize-override="localResizeDimensions[obj.id]"
         :connection-id="config.connection_id"
         :render-mode="config.render_mode ?? 'default'"
+        :label-options="boardLabel"
         @hover="!editMode && openHoverMenu($event, obj)"
         @hover-leave="!editMode && objectHover.scheduleClose()"
         @graph-resize-start="onGraphResizeStart($event, obj)"
@@ -198,6 +200,7 @@ import {
   objectMatchesFilter,
   passesProblemFilter
 } from '@/utils/objectFilter'
+import { resolveBoardLabelOptions } from '@/utils/objectLabel'
 import { resolveTemplate } from '@/utils/template'
 
 import BoardLine from './BoardLine.vue'
@@ -207,6 +210,10 @@ import ContextMenu from './ContextMenu.vue'
 import HoverMenu from './HoverMenu.vue'
 
 const settingsStore = useSettingsStore()
+
+// Board-wide label overrides, merged with the global defaults once here instead
+// of in every object and line.
+const boardLabel = computed(() => resolveBoardLabelOptions(props.config, settingsStore.settings))
 
 const props = defineProps<{
   config: BoardConfig

@@ -17,7 +17,11 @@ from pydantic import ValidationError
 from app.api.v1.deps import get_current_user, require_configure
 from app.form_specs import FORM_SPECS_AVAILABLE
 from app.models.user import User
-from app.object_options import LINE_STYLES
+from app.object_options import (
+    LINE_STYLES,
+    label_show_override_from_choice,
+    label_show_override_to_choice,
+)
 from app.schemas.settings import GlobalSettings, LogLevel, SystemSettings
 from app.services import settings_service
 
@@ -104,6 +108,7 @@ if FORM_SPECS_AVAILABLE:
                     "size": s.label_size,
                     "color": s.label_color,
                     "background": s.label_background,
+                    **({"template": s.label_template} if s.label_template is not None else {}),
                 },
             ]
         else:
@@ -119,6 +124,7 @@ if FORM_SPECS_AVAILABLE:
             "labels": labels,
             # Optional templates / URLs only included when set, matching the flat
             # ``response_model_exclude_none`` behaviour upstream.
+            "label_show_override": label_show_override_to_choice(s.label_show_override),
             **({"hover_template": s.hover_template} if s.hover_template is not None else {}),
             **({"context_template": s.context_template} if s.context_template is not None else {}),
             **({"default_tile_url": s.default_tile_url} if s.default_tile_url is not None else {}),
@@ -138,6 +144,7 @@ if FORM_SPECS_AVAILABLE:
             label_size = int(payload.get("size", current.label_size))
             label_color = str(payload.get("color", current.label_color))
             label_background = str(payload.get("background", current.label_background))
+            label_template = payload.get("template") or None
         elif kind == "hidden":
             # Preserve last-known tuning values — toggling Show off shouldn't
             # erase the operator's careful color/size choices.
@@ -145,6 +152,7 @@ if FORM_SPECS_AVAILABLE:
             label_size = current.label_size
             label_color = current.label_color
             label_background = current.label_background
+            label_template = current.label_template
         else:
             raise HTTPException(status_code=422, detail=f"unknown labels branch: {kind!r}")
 
@@ -158,9 +166,13 @@ if FORM_SPECS_AVAILABLE:
                 z=current.z,
                 line_style=str(form.get("line_style") or current.line_style),
                 label_show=label_show,
+                label_show_override=label_show_override_from_choice(
+                    form.get("label_show_override")
+                ),
                 label_size=label_size,
                 label_color=label_color,
                 label_background=label_background,
+                label_template=label_template,
                 hover_template=form.get("hover_template"),
                 context_template=form.get("context_template"),
                 default_backend_id=str(form.get("default_backend_id", current.default_backend_id)),
@@ -181,6 +193,7 @@ if FORM_SPECS_AVAILABLE:
                 "label_size": ["labels", "shown", "size"],
                 "label_color": ["labels", "shown", "color"],
                 "label_background": ["labels", "shown", "background"],
+                "label_template": ["labels", "shown", "template"],
             }
             details: list[dict[str, Any]] = []
             for err in e.errors():

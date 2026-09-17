@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.form_specs import OrbColorString, OrbDictGroup
-from app.object_options import LINE_STYLES
+from app.object_options import LABEL_SHOW_OVERRIDES, LINE_STYLES
 
 from cmk.rulesets.v1 import Help, Message, Title
 from cmk.rulesets.v1.form_specs import (
@@ -280,11 +280,42 @@ def global_settings_spec(
                                             ),
                                         ),
                                     ),
+                                    "template": DictElement(
+                                        parameter_form=String(
+                                            title=Title("Label template"),
+                                            help_text=Help(
+                                                "Caption for objects without a label text "
+                                                "of their own. Boards can override it, and "
+                                                "an object's own text always wins. Same "
+                                                "placeholders as the hover template, e.g. "
+                                                "'{{name}} — {{label:SSB}}'."
+                                            ),
+                                            prefill=InputHint("e.g. {{name}} — {{label:SSB}}"),
+                                        ),
+                                    ),
                                 },
                             ),
                         ),
                     ],
                     prefill=DefaultValue("shown"),
+                ),
+            ),
+            "label_show_override": DictElement(
+                required=True,
+                group=_OBJECT_LABELS,
+                parameter_form=SingleChoice(
+                    title=Title("Object labels"),
+                    help_text=Help(
+                        "Show or hide the caption of every object, line and "
+                        "worldmap marker on every board. 'Inherit' (the default) "
+                        "lets each object decide; a board with its own setting "
+                        "still wins over this one."
+                    ),
+                    elements=[
+                        SingleChoiceElement(name=name, title=Title(title))
+                        for name, title in LABEL_SHOW_OVERRIDES
+                    ],
+                    prefill=DefaultValue("inherit"),
                 ),
             ),
             # ── Object defaults / Templates ──

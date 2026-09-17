@@ -487,6 +487,8 @@ def _to_read(cfg: BoardConfig) -> BoardRead:
         readonly=cfg.readonly,
         hover_template=cfg.hover_template,
         context_template=cfg.context_template,
+        label_show_override=cfg.label_show_override,
+        label_template=cfg.label_template,
         show_in_lists=cfg.show_in_lists,
         render_mode=cfg.render_mode,
         default_z=cfg.default_z,
