@@ -241,7 +241,7 @@ def test_apply_extra_host_columns_map_correctly():
     Layout (host, after standard 5-col prefix at offset=5):
       [5]=address [6]=alias [7]=last_check [8]=next_check [9]=state_type
       [10]=current_attempt [11]=max_check_attempts [12]=last_state_change
-      [13]=notifications_enabled [14]=active_checks_enabled
+      [13]=notifications_enabled [14]=active_checks_enabled [15]=labels
     """
     state = ObjectState(object_id="", type="host", state="UP")
     row = [
@@ -260,6 +260,7 @@ def test_apply_extra_host_columns_map_correctly():
         1500.0,  # last_state_change
         1,  # notifications_enabled
         0,  # active_checks_enabled
+        {"cmk/site": "prod"},  # labels
     ]
     _apply_extra(state, row, offset=5, include_address=True)
     assert state.address == "192.0.2.1"
@@ -272,6 +273,7 @@ def test_apply_extra_host_columns_map_correctly():
     assert state.last_state_change == 1500.0
     assert state.notifications_enabled is True
     assert state.active_checks_enabled is False
+    assert state.labels == {"cmk/site": "prod"}
 
 
 def test_apply_extra_service_columns_map_correctly():
@@ -293,6 +295,8 @@ def test_apply_extra_service_columns_map_correctly():
         1500.0,  # last_state_change
         1,  # notifications_enabled
         1,  # active_checks_enabled
+        {"SSB": "12-4"},  # labels
+        {"rack": "R12-04"},  # host_labels
     ]
     _apply_extra(state, row, offset=7)
     assert state.last_check == 1700.0
@@ -301,6 +305,23 @@ def test_apply_extra_service_columns_map_correctly():
     assert state.current_attempt == 2
     assert state.max_attempts == 3
     assert state.last_state_change == 1500.0
+    assert state.labels == {"SSB": "12-4", "rack": "R12-04"}
+
+
+def test_apply_extra_service_label_wins_over_host_label():
+    state = ObjectState(object_id="", type="service", state="OK")
+    row = ["h", "s", 0, "out", "", 0, 0, 1700.0, 1760.0, 1, 1, 3, 1500.0, 1, 1]
+    row += [{"rack": "R1", "SSB": "12-4"}, {"rack": "R12-04", "location": "DC1"}]
+    _apply_extra(state, row, offset=7)
+    assert state.labels == {"rack": "R1", "SSB": "12-4", "location": "DC1"}
+
+
+def test_apply_extra_without_labels_column_keeps_empty_dict():
+    """Rows from a core that returned no labels column must not raise."""
+    state = ObjectState(object_id="", type="service", state="OK")
+    row = ["h", "s", 0, "out", "", 0, 0, 1700.0, 1760.0, 1, 1, 3, 1500.0, 1, 1]
+    _apply_extra(state, row, offset=7)
+    assert state.labels == {}
 
 
 def _make_livestatus_connection() -> LivestatusConnection:

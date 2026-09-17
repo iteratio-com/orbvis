@@ -570,11 +570,11 @@ _STATE_TYPE_MAP = {0: "SOFT", 1: "HARD"}
 
 _HOST_EXTRA_COLS = (
     "address alias last_check next_check state_type current_attempt max_check_attempts"
-    " last_state_change notifications_enabled active_checks_enabled"
+    " last_state_change notifications_enabled active_checks_enabled labels"
 )
 _SVC_EXTRA_COLS = (
     "last_check next_check state_type current_attempt max_check_attempts last_state_change"
-    " notifications_enabled active_checks_enabled"
+    " notifications_enabled active_checks_enabled labels host_labels"
 )
 
 # Column lists for the on-demand object-details endpoint. Order matters —
@@ -613,6 +613,11 @@ def _apply_extra(
     state.last_state_change = lsc if lsc > 0 else None
     state.notifications_enabled = _row_bool(row, col + 6, default=True)
     state.active_checks_enabled = _row_bool(row, col + 7, default=True)
+    # Service rows carry their host's labels in a trailing host_labels column
+    # (rack, location, ... usually live on the host). The object's own labels
+    # win on conflicts. Host rows end at labels, so the lookup yields {}.
+    labels = {**_row_dict(row, col + 9), **_row_dict(row, col + 8)}
+    state.labels = {str(k): str(v) for k, v in labels.items()}
     return state
 
 

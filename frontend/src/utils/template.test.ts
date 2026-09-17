@@ -4,6 +4,7 @@ import type { BoardObject, MonitoringState, ObjectState } from '@/types/api'
 
 import { sanitizeTemplateHtml } from './sanitize'
 import {
+  formatLabels,
   formatServicesSummary,
   interpolateTemplate,
   interpolateTemplateHtml,
@@ -34,9 +35,10 @@ function makeState(
     acknowledged?: boolean
     in_downtime?: boolean
     stale?: boolean
+    labels?: Record<string, string>
   } = {}
 ): ObjectState {
-  return {
+  const state: ObjectState = {
     object_id: 'o1',
     type: 'host',
     state: fields.state ?? 'UP',
@@ -46,6 +48,8 @@ function makeState(
     in_downtime: fields.in_downtime ?? false,
     stale: fields.stale ?? false
   }
+  if (fields.labels !== undefined) state.labels = fields.labels
+  return state
 }
 
 describe('interpolateTemplate', () => {
@@ -105,6 +109,30 @@ describe('interpolateTemplate', () => {
     )
   })
 
+  it('resolves a Checkmk label by key', () => {
+    const state = makeState({ labels: { 'cmk/site': 'prod', SSB: '12-4' } })
+    expect(interpolateTemplate('SSB {{label:SSB}}', makeObject(), state)).toBe('SSB 12-4')
+  })
+
+  it('accepts label keys with non-word characters', () => {
+    const state = makeState({ labels: { 'cmk/site': 'prod', 'ssb-room.id': 'A1' } })
+    expect(
+      interpolateTemplate('{{label:cmk/site}} {{label:ssb-room.id}}', makeObject(), state)
+    ).toBe('prod A1')
+  })
+
+  it('renders all labels with {{labels}} and empty string for a missing key', () => {
+    const state = makeState({ labels: { SSB: '12-4', 'cmk/site': 'prod' } })
+    expect(interpolateTemplate('{{labels}}', makeObject(), state)).toBe('cmk/site: prod, SSB: 12-4')
+    expect(interpolateTemplate('[{{label:nope}}]', makeObject(), state)).toBe('[]')
+    expect(interpolateTemplate('[{{label:SSB}}]', makeObject(), makeState())).toBe('[]')
+  })
+
+  it('ignores inherited object properties as label keys', () => {
+    const state = makeState({ labels: { SSB: '12-4' } })
+    expect(interpolateTemplate('[{{label:constructor}}]', makeObject(), state)).toBe('[]')
+  })
+
   it('returns empty string for unknown placeholders and missing state', () => {
     expect(interpolateTemplate('[{{nope}}]', makeObject(), undefined)).toBe('[]')
     expect(interpolateTemplate('[{{state}}]', makeObject(), undefined)).toBe('[]')
@@ -148,6 +176,12 @@ describe('interpolateTemplateHtml → sanitizeTemplateHtml pipeline', () => {
     const link = new DOMParser().parseFromString(html, 'text/html').querySelector('a')
     expect(link?.hasAttribute('onclick')).toBe(false)
     expect(link?.getAttribute('href')).toBe('https://cmk/" onclick="alert(1)')
+  })
+
+  it('escapes label values, which come from the device', () => {
+    const state = makeState({ labels: { rack: '<img src=x>', SSB: '<b>12-4</b>' } })
+    expect(render('{{label:rack}}', state)).toBe('&lt;img src=x&gt;')
+    expect(render('{{labels}}', state)).not.toContain('<b>')
   })
 
   it('escapes raw perf data', () => {
@@ -202,5 +236,18 @@ describe('formatServicesSummary', () => {
 
   it('returns empty string when there is no summary', () => {
     expect(formatServicesSummary(undefined)).toBe('')
+  })
+})
+
+describe('formatLabels', () => {
+  it('sorts keys case-insensitively and joins them as key: value pairs', () => {
+    expect(formatLabels({ SSB: '12-4', 'cmk/site': 'prod', Rack: 'R12' })).toBe(
+      'cmk/site: prod, Rack: R12, SSB: 12-4'
+    )
+  })
+
+  it('returns an empty string without labels', () => {
+    expect(formatLabels(undefined)).toBe('')
+    expect(formatLabels({})).toBe('')
   })
 })

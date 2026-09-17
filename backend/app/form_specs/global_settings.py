@@ -56,7 +56,8 @@ _OBJECT_TEMPLATES = OrbDictGroup(
     title=Title("Templates"),
     help_text=Help(
         "Global fallbacks used when a board or object defines no template "
-        "of its own. Placeholders: {{name}}, {{state}}, {{output}}."
+        "of its own. Placeholders: {{name}}, {{state}}, {{output}}, "
+        "{{label:KEY}}."
     ),
     key="object_templates",
 )
