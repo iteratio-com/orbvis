@@ -4,6 +4,12 @@ All notable changes to OrbVis are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- The OrbVis main menu entry shows up again on later Checkmk 2.5 patch releases (e.g. 2.5.0p14), where `MainMenu` takes `action=RenderTopics(...)` instead of `topics=`; the registration error was silently swallowed
+
 ## [0.6.0] - 2026-06-12
 
 Iterative release on top of 0.5.0. A new design-first **Presentation board**
