@@ -4,6 +4,12 @@ All notable changes to OrbVis are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Image objects now honour an explicit image size that is larger than the image's natural size (e.g. 24 px SVG icons), scaling up while keeping the aspect ratio; previously the size only capped the image
+
 ## [0.6.0] - 2026-06-12
 
 Iterative release on top of 0.5.0. A new design-first **Presentation board**

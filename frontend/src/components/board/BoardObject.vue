@@ -871,18 +871,26 @@ const ringUtilColor = computed(() => {
 })
 
 const customIconStyle = computed(() => {
-  // For type=image the iconSize is the *bound*, not a forced square — let
-  // the image render at its natural aspect and just cap the largest side.
-  // Otherwise (host/service with custom icon) keep the square slot the
-  // state ring expects.
+  // For type=image without an explicit size the iconSize is the *bound*, not
+  // a forced square — let the image render at its natural aspect and just cap
+  // the largest side. An explicit image_size must also scale small images up,
+  // so fit them into that square while keeping their aspect. Otherwise
+  // (host/service with custom icon) keep the square slot the state ring expects.
   const base: Record<string, string> =
-    props.object.type === 'image'
-      ? {
-          maxWidth: `${props.iconSize}px`,
-          maxHeight: `${props.iconSize}px`,
-          display: 'block'
-        }
-      : { width: `${props.iconSize}px`, height: `${props.iconSize}px` }
+    props.object.type !== 'image'
+      ? { width: `${props.iconSize}px`, height: `${props.iconSize}px` }
+      : props.object.display?.image_size != null
+        ? {
+            width: `${props.iconSize}px`,
+            height: `${props.iconSize}px`,
+            objectFit: 'contain',
+            display: 'block'
+          }
+        : {
+            maxWidth: `${props.iconSize}px`,
+            maxHeight: `${props.iconSize}px`,
+            display: 'block'
+          }
   const sel = props.selected ? ' drop-shadow(0 0 6px var(--color-corporate-green-50))' : ''
   const style: Record<string, string> = { ...base, filter: `var(--icon-halo)${sel}` }
   // A custom icon on a host/service conveys its state with a solid coloured ring
