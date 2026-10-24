@@ -2,6 +2,7 @@ import type { BoardObject as MapObject, ObjectState } from '@/types/api'
 import { getBoardObjectName } from '@/utils/naming'
 import { parsePerfData } from '@/utils/perf'
 import { formatRelativeDuration, formatRelativeFuture, formatTimestamp } from '@/utils/time'
+import { escapeHtml } from '@/vendor/cmk/lib/utils'
 
 /**
  * Interpolate a template string with object and state data.
@@ -38,21 +39,46 @@ export function interpolateTemplate(
   object: MapObject,
   state: ObjectState | undefined
 ): string {
-  const displayName = getBoardObjectName(object)
+  return interpolate(template, object, state, (value) => value)
+}
+
+/**
+ * Same as interpolateTemplate, for templates rendered as HTML (hover / context
+ * menu). The template and the board configuration are written by board editors
+ * and stay markup; every value taken from the monitoring state is HTML-escaped,
+ * because plugin output, aliases and perf data come from the monitored devices.
+ * Checkmk escapes plugin output the same way by default.
+ */
+export function interpolateTemplateHtml(
+  template: string,
+  object: MapObject,
+  state: ObjectState | undefined
+): string {
+  return interpolate(template, object, state, escapeHtml)
+}
+
+function interpolate(
+  template: string,
+  object: MapObject,
+  state: ObjectState | undefined,
+  encodeStateValue: (value: string) => string
+): string {
+  const boardVars: Record<string, string> = {
+    name: getBoardObjectName(object),
+    type: object.type,
+    host: object.host_name ?? '',
+    service: object.service_description ?? '',
+    group: object.group_name ?? ''
+  }
 
   const perfRaw = state?.perf_data ?? ''
   const metrics = parsePerfData(perfRaw)
   const firstMetric = metrics[0]
 
-  const vars: Record<string, string> = {
-    name: displayName,
-    type: object.type,
+  const stateVars: Record<string, string> = {
     state: state?.state ?? '',
     output: state?.output?.split('\n')[0] ?? '',
     long_output: state?.output ?? '',
-    host: object.host_name ?? '',
-    service: object.service_description ?? '',
-    group: object.group_name ?? '',
     address: state?.address ?? '',
     alias: state?.alias ?? '',
     acknowledged: state?.acknowledged ? 'true' : 'false',
@@ -74,14 +100,19 @@ export function interpolateTemplate(
     metric_unit: firstMetric?.unit ?? ''
   }
 
+  function namedMetric(label: string): string {
+    const m = metrics.find((x) => x.label === label)
+    return m ? String(m.value) + m.unit : ''
+  }
+
   return template.replace(/\{\{(\w+(?::\w+)?)\}\}/g, (_, key: string) => {
-    // {{metric:LABEL}} – look up a named perf metric
-    if (key.startsWith('metric:')) {
-      const label = key.slice(7)
-      const m = metrics.find((x) => x.label === label)
-      return m ? String(m.value) + m.unit : ''
-    }
-    return vars[key] ?? ''
+    if (Object.hasOwn(boardVars, key)) return boardVars[key] ?? ''
+    const value = key.startsWith('metric:')
+      ? namedMetric(key.slice(7))
+      : Object.hasOwn(stateVars, key)
+        ? (stateVars[key] ?? '')
+        : ''
+    return encodeStateValue(value)
   })
 }
 

@@ -39,6 +39,7 @@ import {
   passesProblemFilter
 } from '@/utils/objectFilter'
 import { stateColor as stateColorFromName } from '@/utils/stateColors'
+import { escapeHtml } from '@/vendor/cmk/lib/utils'
 
 const props = defineProps<{
   config: BoardConfig
@@ -110,14 +111,6 @@ function isSelected(id: string): boolean {
 
 function markerZBase(obj: BoardObjectType): number {
   return (obj.z ?? props.config.default_z ?? 1) * 1000
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
 
 // Live size override while a textbox is being drag-resized; null when idle.

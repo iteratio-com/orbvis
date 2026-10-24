@@ -4,6 +4,16 @@ All notable changes to OrbVis are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- Hover and context templates HTML-escape every value taken from the monitoring state (plugin output, alias, address, perf data, …), as Checkmk does by default. Previously a monitored device could inject tags the template sanitizer allows, such as images or links, through its plugin output. The template's own markup and values from the board configuration ({{name}}, {{host}}, {{service}}, {{group}}) still render as before. HTML in plugin output is no longer rendered in templates, even where the Checkmk rule *Escape HTML in service output* is disabled
+
+### Fixed
+
+- Template placeholders named like built-in object properties (e.g. `{{constructor}}`) render empty instead of JavaScript source text
+
 ## [0.6.0] - 2026-06-12
 
 Iterative release on top of 0.5.0. A new design-first **Presentation board**

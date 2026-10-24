@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { BoardObject, MonitoringState, ObjectState } from '@/types/api'
 
 import { sanitizeTemplateHtml } from './sanitize'
-import { formatServicesSummary, interpolateTemplate, resolveTemplate } from './template'
+import {
+  formatServicesSummary,
+  interpolateTemplate,
+  interpolateTemplateHtml,
+  resolveTemplate
+} from './template'
 
 // Concrete builders (not Partial spreads) so the objects satisfy
 // `exactOptionalPropertyTypes` without ever assigning `undefined`.
@@ -94,30 +99,88 @@ describe('interpolateTemplate', () => {
     expect(interpolateTemplate('[{{metric:missing}}]', makeObject(), state)).toBe('[]')
   })
 
+  it('ignores inherited object properties as placeholders', () => {
+    expect(interpolateTemplate('[{{constructor}}][{{toString}}]', makeObject(), makeState())).toBe(
+      '[][]'
+    )
+  })
+
   it('returns empty string for unknown placeholders and missing state', () => {
     expect(interpolateTemplate('[{{nope}}]', makeObject(), undefined)).toBe('[]')
     expect(interpolateTemplate('[{{state}}]', makeObject(), undefined)).toBe('[]')
   })
 })
 
-describe('interpolateTemplate → sanitizeTemplateHtml pipeline', () => {
-  // The two functions are a security pair: interpolation injects untrusted
-  // monitoring data (plugin output) into the template, and sanitization must
-  // neutralise anything dangerous that data smuggles in.
-  it('strips a <script> smuggled through plugin output', () => {
-    const state = makeState({ output: '<script>alert(1)</script>SAFE' })
-    const html = sanitizeTemplateHtml(interpolateTemplate('<b>{{output}}</b>', makeObject(), state))
-    expect(html).not.toContain('script')
-    expect(html).not.toContain('alert')
-    expect(html).toContain('SAFE')
+describe('interpolateTemplateHtml → sanitizeTemplateHtml pipeline', () => {
+  // The hover / context menu render this pair via v-html. Plugin output comes
+  // from the monitored device, so the values are escaped before the template's
+  // own markup goes through the sanitizer.
+  function render(template: string, state: ObjectState): string {
+    return sanitizeTemplateHtml(interpolateTemplateHtml(template, makeObject(), state))
+  }
+
+  it('keeps the markup of the template itself', () => {
+    expect(render('<b>{{state}}</b>', makeState({ state: 'DOWN' }))).toBe('<b>DOWN</b>')
   })
 
-  it('strips event-handler attributes smuggled through plugin output', () => {
-    const state = makeState({ output: '<img src=x onerror="alert(1)">marker' })
-    const html = sanitizeTemplateHtml(interpolateTemplate('<b>{{output}}</b>', makeObject(), state))
-    expect(html).not.toContain('onerror')
-    expect(html).not.toContain('alert')
-    expect(html).toContain('marker')
+  it('renders a <script> smuggled through plugin output as text', () => {
+    const html = render('<b>{{output}}</b>', makeState({ output: '<script>alert(1)</script>SAFE' }))
+    expect(html).toBe('<b>&lt;script&gt;alert(1)&lt;/script&gt;SAFE</b>')
+  })
+
+  it('renders tags the sanitizer would allow as text, too', () => {
+    // <img> and <a> are allowed template markup; from plugin output they must
+    // not turn into elements (tracking pixels, phishing links).
+    const html = render(
+      '{{output}}',
+      makeState({ output: '<img src=x onerror="alert(1)"><a href="https://evil">x</a>' })
+    )
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<a')
+    expect(html).toContain('&lt;img')
+  })
+
+  it('escapes values inside attributes of the template', () => {
+    const html = render(
+      '<a href="https://cmk/{{output}}">go</a>',
+      makeState({ output: '" onclick="alert(1)' })
+    )
+    const link = new DOMParser().parseFromString(html, 'text/html').querySelector('a')
+    expect(link?.hasAttribute('onclick')).toBe(false)
+    expect(link?.getAttribute('href')).toBe('https://cmk/" onclick="alert(1)')
+  })
+
+  it('escapes raw perf data', () => {
+    const html = render('{{perf_data}}', makeState({ perf_data: "'<b>x</b>'=1;;;" }))
+    expect(html).not.toContain('<b>')
+    expect(html).toContain('&lt;b&gt;')
+  })
+
+  it('keeps markup from the board configuration, which editors own', () => {
+    const obj = makeObject({
+      host_name: 'web01',
+      label: {
+        show: true,
+        text: '<b>Core</b>&nbsp;Switch',
+        x: 0,
+        y: 0,
+        size: 11,
+        color: '#fff',
+        background: 'transparent'
+      }
+    })
+    const html = sanitizeTemplateHtml(
+      interpolateTemplateHtml('{{name}} {{host}}', obj, makeState())
+    )
+    expect(html).toBe('<b>Core</b>\u00a0Switch web01')
+  })
+})
+
+describe('interpolateTemplate (text contexts)', () => {
+  it('leaves values unescaped for plain-text rendering', () => {
+    expect(
+      interpolateTemplate('{{output}}', makeObject(), makeState({ output: 'a < b & c' }))
+    ).toBe('a < b & c')
   })
 })
 

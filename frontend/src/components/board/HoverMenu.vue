@@ -206,7 +206,7 @@ import {
 import { VISUAL_ONLY_TYPES, getBoardObjectIdentifier, getObjectTypeLabel } from '@/utils/naming'
 import { type PerfMetric, parsePerfData, utilColor, utilPercent } from '@/utils/perf'
 import { sanitizeTemplateHtml } from '@/utils/sanitize'
-import { interpolateTemplate } from '@/utils/template'
+import { interpolateTemplateHtml } from '@/utils/template'
 import { formatRelativeDuration, formatRelativeFuture } from '@/utils/time'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
@@ -404,7 +404,7 @@ onMounted(() => {
 
 const renderedTemplate = computed(() => {
   if (!props.template) return null
-  const html = interpolateTemplate(props.template, props.object, props.state)
+  const html = interpolateTemplateHtml(props.template, props.object, props.state)
   return sanitizeTemplateHtml(html)
 })
 

@@ -248,7 +248,7 @@ import type { BoardObject, ObjectState } from '@/types/api'
 import { buildCheckmkViewUrl } from '@/utils/boardNavigation'
 import { getBoardObjectName, getObjectTypeLabel } from '@/utils/naming'
 import { sanitizeTemplateHtml } from '@/utils/sanitize'
-import { interpolateTemplate } from '@/utils/template'
+import { interpolateTemplateHtml } from '@/utils/template'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
 const { _t } = usei18n()
@@ -288,7 +288,7 @@ const lineHasBinding = computed(
 
 const renderedTemplate = computed(() =>
   props.template
-    ? sanitizeTemplateHtml(interpolateTemplate(props.template, props.object, props.state))
+    ? sanitizeTemplateHtml(interpolateTemplateHtml(props.template, props.object, props.state))
     : null
 )
 
