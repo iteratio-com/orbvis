@@ -53,7 +53,7 @@ repos:
   # Python: bandit (security) — runs on every commit for backend/app
   # ------------------------------------------------------------------------
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.0
+    rev: 1.9.4
     hooks:
       - id: bandit
         args: [-ll]
