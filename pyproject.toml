@@ -63,6 +63,7 @@ ignore = [
   # OrbVis-Additions
   "B008",    # FastAPI Depends(...) in default args is idiomatic
   "E402",    # module-level import not at top — intentional in main.py
+  "PLR0917", # too many positional args — sibling of PLR0913, stable since ruff 0.17
   "RUF001",  # ambiguous EN DASH in strings — intentional prose
   "RUF002",  # ambiguous EN DASH in docstrings — intentional prose
   "RUF003",  # ambiguous EN DASH in comments — intentional prose
