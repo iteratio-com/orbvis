@@ -1,13 +1,7 @@
 declare module '@cmk/components/CmkButton' {
   import type { DefineComponent } from 'vue'
   type ButtonVariant =
-    | 'primary'
-    | 'secondary'
-    | 'optional'
-    | 'success'
-    | 'warning'
-    | 'danger'
-    | 'info'
+    'primary' | 'secondary' | 'optional' | 'success' | 'warning' | 'danger' | 'info'
   interface CmkButtonProps {
     variant?: ButtonVariant
     disabled?: boolean | string

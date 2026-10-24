@@ -2124,8 +2124,7 @@ const settingsParentMapSize = ref<{ width: number; height: number } | null>(null
 
 const worldmapPickActive = ref(false)
 let worldmapPickResolver:
-  | ((view: { lat: number; lng: number; zoom: number } | null) => void)
-  | null = null
+  ((view: { lat: number; lng: number; zoom: number } | null) => void) | null = null
 
 function onSettingsPickWorldmapView(
   done: (view: { lat: number; lng: number; zoom: number } | null) => void

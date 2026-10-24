@@ -65,12 +65,7 @@ export interface DisplayConfig {
 }
 
 export type LineStyle =
-  | 'plain'
-  | 'arrow_end'
-  | 'arrow_start'
-  | 'arrow_both'
-  | 'arrow_inward'
-  | 'dashed'
+  'plain' | 'arrow_end' | 'arrow_start' | 'arrow_both' | 'arrow_inward' | 'dashed'
 
 export type LinePerfdataLabel = 'none' | 'percent' | 'bandwidth' | 'both'
 
@@ -130,11 +125,7 @@ export type PresentationTheme = 'midnight' | 'paper' | 'ops' | 'aurora'
 // Monitoring object types a presentation element can bind to. Absent/null
 // keeps the legacy host/service derivation.
 export type PresentationObjectType =
-  | 'host'
-  | 'service'
-  | 'hostgroup'
-  | 'servicegroup'
-  | 'aggregation'
+  'host' | 'service' | 'hostgroup' | 'servicegroup' | 'aggregation'
 
 export interface ElementLabel {
   show: boolean
@@ -236,11 +227,7 @@ export interface GroupElement extends PresentationElementBase {
 }
 
 export type PresentationElement =
-  | ShapeElement
-  | TextElement
-  | ImageElement
-  | DataElement
-  | GroupElement
+  ShapeElement | TextElement | ImageElement | DataElement | GroupElement
 
 export interface PresentationView {
   type: 'presentation'
@@ -254,12 +241,7 @@ export interface PresentationView {
 }
 
 export type BoardView =
-  | StaticView
-  | WorldmapView
-  | RadarView
-  | FlowView
-  | FolderTreeView
-  | PresentationView
+  StaticView | WorldmapView | RadarView | FlowView | FolderTreeView | PresentationView
 
 // Unsaved server-side foldertree view fields the Settings preview sends so the
 // server rebuilds the tree without persisting. Client-side fields (problems_only,

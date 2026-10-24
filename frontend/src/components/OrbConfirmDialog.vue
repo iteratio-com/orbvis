@@ -25,13 +25,7 @@ import usei18n from '@/vendor/cmk/lib/i18n'
 
 type DialogVariant = 'error' | 'warning' | 'success' | 'info'
 type ButtonVariant =
-  | 'primary'
-  | 'secondary'
-  | 'optional'
-  | 'success'
-  | 'warning'
-  | 'danger'
-  | 'info'
+  'primary' | 'secondary' | 'optional' | 'success' | 'warning' | 'danger' | 'info'
 
 const props = withDefaults(
   defineProps<{
