@@ -9,7 +9,7 @@ dependencies = [
     "uvicorn>=0.32.0",
     "pydantic>=2.10.0",
     "bcrypt>=4.0.0",
-    "python-multipart>=0.0.28",       # CVE-2026-40347, CVE-2026-42561 — OMD ships 0.0.22/0.0.27
+    "python-multipart>=0.0.31",       # CVE-2026-40347, CVE-2026-42561, CVE-2026-53537..53540 — OMD ships 0.0.22/0.0.27
     "httpx>=0.28.0",                  # CMK 2.3 lacks this; bundled for that target
     "defusedxml>=0.7.1",              # safe SVG parsing (XXE / billion-laughs protection)
 ]
