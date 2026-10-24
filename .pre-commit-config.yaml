@@ -40,6 +40,7 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+        types_or: [python, pyi]  # ruff >=0.17 also formats code blocks in markdown
 
   # ------------------------------------------------------------------------
   # Shell scripts
