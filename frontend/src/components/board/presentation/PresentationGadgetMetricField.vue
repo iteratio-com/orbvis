@@ -56,9 +56,16 @@ const metricModel = ref('')
 // previously picked metric belongs to a different object and is almost always
 // invalid — reset it so the operator re-picks from the fresh list. Connection
 // and object-type switches null the host/service too, so this one watcher covers
-// every binding change.
+// every binding change. The display mode is watched too: elements are usually
+// dropped as icons and switched to gadget afterwards, which must fetch.
 watch(
-  () => [props.element.id, props.element.host_name, props.element.service_description] as const,
+  () =>
+    [
+      props.element.id,
+      props.element.host_name,
+      props.element.service_description,
+      props.element.display.mode
+    ] as const,
   async (curr, prev) => {
     const bindingChanged =
       prev !== undefined && prev[0] === curr[0] && (prev[1] !== curr[1] || prev[2] !== curr[2])
