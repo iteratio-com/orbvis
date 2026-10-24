@@ -41,8 +41,8 @@
     "leaflet": "^1.9.4",
     "pinia": "^3.0.4",
     "reka-ui": "^2.9.8",
-    "sanitize-html": "^2.17.5",
-    "vue": "^3.5.38",
+    "sanitize-html": "^2.18.1",
+    "vue": "^3.5.44",
     "vue-echarts": "^8.0.1",
     "vue-router": "^5.1.0",
     "vue3-gettext": "^4.0.1"
@@ -60,8 +60,8 @@
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.61.1",
     "@vitejs/plugin-vue": "^6.0.6",
-    "@vitest/coverage-v8": "^4.1.10",
-    "@vitest/ui": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.12",
+    "@vitest/ui": "^4.1.12",
     "@vue/test-utils": "^2.4.11",
     "autoprefixer": "^10.4.27",
     "eslint": "^10.5.0",
@@ -82,11 +82,11 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.61.1",
     "vite": "^8.1.0",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.12",
     "vitest-fail-on-console": "^0.7.1",
     "vue-tsc": "^3.3.2"
   },
   "overrides": {
-    "js-yaml": "4.2.0"
+    "js-yaml": "4.3.2"
   }
 }
