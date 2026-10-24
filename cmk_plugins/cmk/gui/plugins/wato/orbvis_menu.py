@@ -168,6 +168,15 @@ except ImportError:
         from cmk.gui.type_defs import IconNames, StaticIcon
         from cmk.gui.utils.roles import UserPermissions
 
+        # Later 2.5 patch releases replaced MainMenu(topics=...) with
+        # MainMenu(action=RenderTopics(...)); earlier ones lack RenderTopics.
+        try:
+            from cmk.gui.main_menu_types import RenderTopics
+
+            _HAS_RENDER_TOPICS = True
+        except ImportError:
+            _HAS_RENDER_TOPICS = False
+
         def _orbvis_topics_25(user_permissions: UserPermissions) -> list:
             if not _is_local_install() or not _user_may_use():
                 return []
@@ -221,6 +230,12 @@ except ImportError:
                 )
             ]
 
+        _menu_kwargs: dict[str, object] = (
+            {"action": RenderTopics(topics=_orbvis_topics_25)}
+            if _HAS_RENDER_TOPICS
+            else {"topics": _orbvis_topics_25}
+        )
+
         try:
             main_menu_registry.register(
                 MainMenu(
@@ -228,7 +243,7 @@ except ImportError:
                     title=_("OrbVis"),
                     icon=StaticIcon(IconNames.save_dashboard),
                     sort_index=16,
-                    topics=_orbvis_topics_25,
+                    **_menu_kwargs,
                 )
             )
         except Exception:
