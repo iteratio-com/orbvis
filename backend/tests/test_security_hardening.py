@@ -10,6 +10,8 @@ from app.api.v1.connections import (
     ServiceActionRequest,
     _build_action_command,
 )
+from app.connections.base import MetricHistoryResult
+from app.connections.livestatus import LivestatusConnection
 from app.core.image_security import is_safe_svg, is_valid_image
 from app.models.user import User
 from app.schemas.board import BoardObject, BoardObjectUpdate, normalize_object_filter
@@ -309,3 +311,71 @@ class TestCommandInjection:
         cmd = _build_action_command(body, self._ADMIN)
         assert "\n" not in cmd and "\r" not in cmd
         assert cmd.startswith("SCHEDULE_FORCED_SVC_CHECK;h x;s y;")
+
+
+class TestMetricHistoryScope:
+    """The automation-credentialed REST path must not reach objects the viewer can't see."""
+
+    @staticmethod
+    def _rest_connection() -> LivestatusConnection:
+        return LivestatusConnection(
+            socket_path="/dev/null",
+            checkmk_url="https://cmk.example/site/check_mk",
+            automation_user="automation",
+            automation_secret="secret",
+        )
+
+    @pytest.mark.asyncio
+    async def test_invisible_object_skips_rest_lookups(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = self._rest_connection()
+        rest_calls: list[str] = []
+
+        async def _no_rows(_query: str) -> list[list[object]]:
+            return []
+
+        async def _rest(*_args: object, **_kwargs: object) -> list[str]:
+            rest_calls.append("rest")
+            return ["leaked"]
+
+        monkeypatch.setattr(conn, "_query", _no_rows)
+        monkeypatch.setattr(conn, "_get_cmk_metric_names", _rest)
+        result = await conn.get_metric_history("foreign-host", "CPU load", 0, 3600)
+        assert result.series == {}
+        assert rest_calls == []
+
+    @pytest.mark.asyncio
+    async def test_failed_lookup_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        conn = self._rest_connection()
+
+        async def _boom(_query: str) -> list[list[object]]:
+            raise OSError("livestatus down")
+
+        async def _unexpected(*_args: object, **_kwargs: object) -> MetricHistoryResult:
+            raise AssertionError("history fetched without a visibility check")
+
+        monkeypatch.setattr(conn, "_query", _boom)
+        monkeypatch.setattr(conn, "_fetch_cmk_graph_history", _unexpected)
+        assert (await conn.get_metric_history("h", None, 0, 3600)).series == {}
+
+    @pytest.mark.asyncio
+    async def test_visible_object_passes_its_perf_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = self._rest_connection()
+        seen: list[str] = []
+
+        async def _rows(_query: str) -> list[list[object]]:
+            return [["load1=0.5;;;0;", "check_mk-cpu.loads"]]
+
+        async def _history(
+            _host: str, _service: str | None, perf_data: str, _start: int, _end: int
+        ) -> MetricHistoryResult:
+            seen.append(perf_data)
+            return MetricHistoryResult()
+
+        monkeypatch.setattr(conn, "_query", _rows)
+        monkeypatch.setattr(conn, "_fetch_cmk_graph_history", _history)
+        await conn.get_metric_history("h", "CPU load", 0, 3600)
+        assert seen == ["load1=0.5;;;0;"]
