@@ -2180,9 +2180,7 @@ watchEffect(async () => {
   editor.resetForNewMap()
 
   await boardsStore.fetchBoard(name)
-  statesStore.connectToMap(name, auth.accessToken ?? undefined, async () =>
-    (await auth.refreshAccessToken()) ? auth.accessToken : null
-  )
+  statesStore.connectToMap(name)
   scheduleRotation(boardsStore.currentBoard?.rotation_interval ?? 0)
 
   const cfg = boardsStore.currentBoard

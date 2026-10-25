@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
 import { ApiError, authApi, boardsApi, connectionsApi } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 import type {
   FolderTreeDelta,
   FolderTreeNode,
@@ -215,10 +216,6 @@ export const useStatesStore = defineStore('states', () => {
   let reprobeTimer: ReturnType<typeof setInterval> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let currentMap: string | null = null
-  let currentToken: string | undefined = undefined
-  // A reconnect can come long after connectToMap, when the access token handed
-  // in then has expired while the open stream kept working.
-  let renewToken: (() => Promise<string | null>) | undefined = undefined
   // True while we're on the HTTP polling fallback because SSE didn't connect.
   // Not permanent: a re-probe timer keeps testing SSE so a transient failure
   // (proxy hiccup) heals back to live streaming without a page reload.
@@ -227,17 +224,27 @@ export const useStatesStore = defineStore('states', () => {
   let probing = false
   const SSE_REPROBE_INTERVAL_MS = 60_000
   const SSE_RECONNECT_DELAY_MS = 2_000
+  const SSE_RECONNECT_MAX_DELAY_MS = 30_000
+  // Doubles per reconnect and resets only once a stream delivers a message, so
+  // a stream that opens and drops at once (proxy closing long responses) backs
+  // off instead of reconnecting every 2 s and eating the connect budget.
+  let reconnectDelay = SSE_RECONNECT_DELAY_MS
 
-  async function connectToMap(
-    mapName: string,
-    token?: string,
-    renew?: () => Promise<string | null>
-  ) {
+  function _token(): string | null {
+    return useAuthStore().accessToken
+  }
+
+  // A reconnect or poll can come long after the board was opened, when the
+  // access token has expired while the open stream kept working.
+  async function _renewToken(): Promise<string | null> {
+    const auth = useAuthStore()
+    return (await auth.refreshAccessToken().catch(() => false)) ? auth.accessToken : null
+  }
+
+  async function connectToMap(mapName: string) {
     if (currentMap === mapName && (sse?.readyState === EventSource.OPEN || pollTimer)) return
     disconnect()
     currentMap = mapName
-    currentToken = token
-    renewToken = renew
     initialLoad.value = true
     try {
       await _fetchStates()
@@ -256,13 +263,14 @@ export const useStatesStore = defineStore('states', () => {
   // (built from disk-cfg) are ignored so this override snapshot isn't clobbered.
   const folderOverride = ref<FolderTreeOverride | null>(null)
 
-  async function _fetchStates() {
-    if (!currentMap || !currentToken) return
+  async function _fetchStates(retried = false): Promise<void> {
+    const token = _token()
+    if (!currentMap || !token) return
     const mapAtStart = currentMap
     try {
       const data = await boardsApi.getStates(
         mapAtStart,
-        currentToken,
+        token,
         radarOverride.value,
         folderOverride.value
       )
@@ -284,13 +292,16 @@ export const useStatesStore = defineStore('states', () => {
       _setFolderTree(data.folder_tree ?? null)
       if (notificationsEnabled.value)
         prevFolderHostStates = _diffNotifyFolderTree(folderTree.value, prevFolderHostStates)
-    } catch {
+    } catch (e) {
+      if (!retried && e instanceof ApiError && e.status === 401 && (await _renewToken())) {
+        return _fetchStates(true)
+      }
       connected.value = false
     }
   }
 
   function _startPolling() {
-    if (!pollTimer) pollTimer = setInterval(_fetchStates, 15_000)
+    if (!pollTimer) pollTimer = setInterval(() => void _fetchStates(), 15_000)
     // Keep probing for SSE so a transient first-connect failure heals back
     // to live streaming instead of polling forever (until a page reload).
     if (!reprobeTimer) reprobeTimer = setInterval(_attemptSseReprobe, SSE_REPROBE_INTERVAL_MS)
@@ -300,38 +311,32 @@ export const useStatesStore = defineStore('states', () => {
   // Authorization). Proxies log query strings, so prefer a minutes-lived
   // stream ticket over the 60-min access token; fall back to the token when
   // the ticket endpoint is unavailable (older backend during an update).
-  async function _sseUrl(map: string, token: string): Promise<string> {
-    let credential = token
-    try {
-      credential = (await authApi.streamTicket(token)).ticket
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401 && renewToken) {
-        const renewed = await renewToken().catch(() => null)
-        if (renewed) {
-          currentToken = renewed
-          credential = renewed
-          try {
-            credential = (await authApi.streamTicket(renewed)).ticket
-          } catch {
-            // documented fallback above
-          }
-        }
-      }
-      // otherwise the documented fallback above
-    }
+  async function _sseUrl(map: string): Promise<string> {
+    const credential = await _streamCredential(_token() ?? '')
     return `${_base}/api/v1/sse/boards/${encodeURIComponent(map)}?token=${encodeURIComponent(
       credential
     )}`
+  }
+
+  async function _streamCredential(token: string): Promise<string> {
+    try {
+      return (await authApi.streamTicket(token)).ticket
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 401)) return token
+    }
+    const renewed = await _renewToken()
+    if (!renewed) return token
+    return (await authApi.streamTicket(renewed).catch(() => null))?.ticket ?? renewed
   }
 
   // While polling, periodically test whether SSE is reachable again. On
   // success we discard the probe and re-establish the real stream via the
   // normal _connect() path (which wires the message/error handlers).
   async function _attemptSseReprobe() {
-    if (probing || !pollingMode || !currentMap || !currentToken) return
+    if (probing || !pollingMode || !currentMap || !_token()) return
     probing = true
     const probeMap = currentMap
-    const probeUrl = await _sseUrl(probeMap, currentToken)
+    const probeUrl = await _sseUrl(probeMap)
     // A board switch / disconnect may have happened during the ticket fetch.
     if (!pollingMode || currentMap !== probeMap) {
       probing = false
@@ -419,9 +424,9 @@ export const useStatesStore = defineStore('states', () => {
   }
 
   async function _connect() {
-    if (!currentMap || !currentToken) return
+    if (!currentMap || !_token()) return
     const map = currentMap
-    const url = await _sseUrl(map, currentToken)
+    const url = await _sseUrl(map)
     // Board switched / disconnected while the ticket fetch was in flight.
     if (currentMap !== map || sse) return
     const stream = new EventSource(url)
@@ -433,6 +438,7 @@ export const useStatesStore = defineStore('states', () => {
     }
 
     stream.onmessage = (event) => {
+      reconnectDelay = SSE_RECONNECT_DELAY_MS
       try {
         const msg: WebSocketStateUpdate | WebSocketTopologyUpdate = JSON.parse(event.data)
         if (msg.type === 'state_update') {
@@ -483,13 +489,13 @@ export const useStatesStore = defineStore('states', () => {
 
     stream.onerror = () => {
       if (sse !== stream) return
+      stream.close()
+      sse = null
       // Fall back to polling only when the very first connect failed (proxy
       // without streaming support, auth rejected etc.).
       if (!opened) {
         pollingMode = true
         sseAvailable.value = false
-        stream.close()
-        sse = null
         _startPolling()
         return
       }
@@ -498,14 +504,11 @@ export const useStatesStore = defineStore('states', () => {
       // proxy 502 during a restart), freezing the board. Reconnect with a fresh
       // ticket instead; if that first connect fails, polling takes over.
       connected.value = false
-      stream.close()
-      sse = null
-      if (!reconnectTimer) {
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = null
-          void _connect()
-        }, SSE_RECONNECT_DELAY_MS)
-      }
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null
+        void _connect()
+      }, reconnectDelay)
+      reconnectDelay = Math.min(reconnectDelay * 2, SSE_RECONNECT_MAX_DELAY_MS)
     }
   }
 
@@ -514,6 +517,7 @@ export const useStatesStore = defineStore('states', () => {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
+    reconnectDelay = SSE_RECONNECT_DELAY_MS
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = null
@@ -551,8 +555,6 @@ export const useStatesStore = defineStore('states', () => {
     prevFolderHostStates = null
     folderOverride.value = null
     currentMap = null
-    currentToken = undefined
-    renewToken = undefined
   }
 
   function getState(objectId: string): ObjectState | undefined {
@@ -622,7 +624,7 @@ export const useStatesStore = defineStore('states', () => {
     connectToMap,
     disconnect,
     getState,
-    refreshNow: _fetchStates,
+    refreshNow: () => _fetchStates(),
     async refreshWithIndicator(): Promise<void> {
       initialLoad.value = true
       try {

@@ -1,9 +1,28 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, authApi } from '@/api/client'
+import { ApiError, authApi, boardsApi } from '@/api/client'
 
 import { useStatesStore } from './states'
+
+const auth = vi.hoisted(() => ({
+  accessToken: 'token' as string | null,
+  refreshAccessToken: vi.fn<() => Promise<boolean>>()
+}))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => auth }))
+
+beforeEach(() => {
+  auth.accessToken = 'token'
+  auth.refreshAccessToken.mockReset()
+})
+
+/** Renewal that succeeds and swaps in ``token``. */
+function renewsTo(token: string) {
+  auth.refreshAccessToken.mockImplementation(async () => {
+    auth.accessToken = token
+    return true
+  })
+}
 
 vi.mock('@/api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -55,7 +74,7 @@ describe('states store — SSE polling fallback + re-probe (T14)', () => {
 
   it('falls back to polling when the first SSE connect fails, then heals via re-probe', async () => {
     const store = useStatesStore()
-    await store.connectToMap('board1', 'token')
+    await store.connectToMap('board1')
 
     // _connect opened exactly one EventSource; nothing has failed yet.
     expect(FakeEventSource.instances).toHaveLength(1)
@@ -81,7 +100,7 @@ describe('states store — SSE polling fallback + re-probe (T14)', () => {
 
   it('keeps polling (and does not leak probes) while SSE stays unreachable', async () => {
     const store = useStatesStore()
-    await store.connectToMap('board1', 'token')
+    await store.connectToMap('board1')
     FakeEventSource.instances[0]!.onerror?.()
     expect(store.sseAvailable).toBe(false)
 
@@ -104,7 +123,7 @@ describe('states store — SSE polling fallback + re-probe (T14)', () => {
 
   it('drops an in-flight probe on disconnect — no stream promoted for the wrong board', async () => {
     const store = useStatesStore()
-    await store.connectToMap('board1', 'token')
+    await store.connectToMap('board1')
     FakeEventSource.instances[0]!.onerror?.() // → polling
     await vi.advanceTimersByTimeAsync(60_000) // → probe (instance[1])
     const probe = FakeEventSource.instances[1]!
@@ -136,9 +155,9 @@ describe('states store — reconnect after an established stream drops', () => {
     vi.restoreAllMocks()
   })
 
-  async function openStream(renew?: () => Promise<string | null>) {
+  async function openStream() {
     const store = useStatesStore()
-    await store.connectToMap('board1', 'token', renew)
+    await store.connectToMap('board1')
     FakeEventSource.instances[0]!.onopen?.()
     return store
   }
@@ -159,8 +178,8 @@ describe('states store — reconnect after an established stream drops', () => {
   })
 
   it('renews an expired access token before fetching the ticket', async () => {
-    const renew = vi.fn().mockResolvedValue('new-token')
-    await openStream(renew)
+    renewsTo('new-token')
+    await openStream()
     vi.mocked(authApi.streamTicket)
       .mockRejectedValueOnce(new ApiError(401, 'expired'))
       .mockResolvedValueOnce({ ticket: 'renewed-ticket', expires_in: 300 })
@@ -168,13 +187,14 @@ describe('states store — reconnect after an established stream drops', () => {
     FakeEventSource.instances[0]!.onerror?.()
     await vi.advanceTimersByTimeAsync(2_000)
 
-    expect(renew).toHaveBeenCalledOnce()
+    expect(auth.refreshAccessToken).toHaveBeenCalledOnce()
     expect(authApi.streamTicket).toHaveBeenLastCalledWith('new-token')
     expect(FakeEventSource.instances[1]!.url).toContain('token=renewed-ticket')
   })
 
   it('still reconnects when renewing the token fails', async () => {
-    await openStream(vi.fn().mockRejectedValue(new Error('offline')))
+    auth.refreshAccessToken.mockRejectedValue(new Error('offline'))
+    await openStream()
     vi.mocked(authApi.streamTicket).mockRejectedValueOnce(new ApiError(401, 'expired'))
 
     FakeEventSource.instances[0]!.onerror?.()
@@ -183,13 +203,34 @@ describe('states store — reconnect after an established stream drops', () => {
   })
 
   it('does not renew the token on errors other than 401', async () => {
-    const renew = vi.fn().mockResolvedValue('new-token')
-    await openStream(renew)
+    renewsTo('new-token')
+    await openStream()
     vi.mocked(authApi.streamTicket).mockRejectedValueOnce(new ApiError(502, 'proxy'))
 
     FakeEventSource.instances[0]!.onerror?.()
     await vi.advanceTimersByTimeAsync(2_000)
-    expect(renew).not.toHaveBeenCalled()
+    expect(auth.refreshAccessToken).not.toHaveBeenCalled()
+  })
+
+  it('backs off while streams keep dropping before any message, and resets on data', async () => {
+    await openStream()
+    const dropAfterOpen = async (waitMs: number) => {
+      const last = FakeEventSource.instances.at(-1)!
+      last.onopen?.()
+      last.onerror?.()
+      await vi.advanceTimersByTimeAsync(waitMs - 1)
+      const before = FakeEventSource.instances.length
+      await vi.advanceTimersByTimeAsync(1)
+      expect(FakeEventSource.instances.length).toBe(before + 1)
+    }
+    await dropAfterOpen(2_000)
+    await dropAfterOpen(4_000)
+    await dropAfterOpen(8_000)
+
+    const live = FakeEventSource.instances.at(-1)!
+    live.onopen?.()
+    live.onmessage?.({ data: '{}' } as MessageEvent)
+    await dropAfterOpen(2_000)
   })
 
   it('falls back to polling when the reconnect itself is refused', async () => {
@@ -276,7 +317,7 @@ describe('states store — folder-tree delta apply', () => {
 
   it('applies a full delta then patches changed nodes in place', async () => {
     const store = useStatesStore()
-    await store.connectToMap('b', 't')
+    await store.connectToMap('b')
     const es = FakeEventSource.instances[0]!
     es.onopen?.()
 
@@ -321,7 +362,7 @@ describe('states store — folder-tree delta apply', () => {
 
   it('reorders children when a delta carries children_order', async () => {
     const store = useStatesStore()
-    await store.connectToMap('b', 't')
+    await store.connectToMap('b')
     const es = FakeEventSource.instances[0]!
     es.onopen?.()
     send(es, {
@@ -367,7 +408,8 @@ describe('states store — SSE auth credential', () => {
 
   it('connects with the short-lived stream ticket, not the access token', async () => {
     const store = useStatesStore()
-    await store.connectToMap('b', 'long-lived-access-token')
+    auth.accessToken = 'long-lived-access-token'
+    await store.connectToMap('b')
     const es = FakeEventSource.instances[0]!
     expect(es.url).toContain('token=short-lived-ticket')
     expect(es.url).not.toContain('long-lived-access-token')
@@ -377,8 +419,20 @@ describe('states store — SSE auth credential', () => {
     const { authApi } = await import('@/api/client')
     vi.mocked(authApi.streamTicket).mockRejectedValueOnce(new Error('404'))
     const store = useStatesStore()
-    await store.connectToMap('b', 'fallback-token')
+    auth.accessToken = 'fallback-token'
+    await store.connectToMap('b')
     const es = FakeEventSource.instances[0]!
     expect(es.url).toContain('token=fallback-token')
+  })
+
+  it('renews an expired access token when a poll is refused', async () => {
+    const store = useStatesStore()
+    await store.connectToMap('b')
+    renewsTo('new-token')
+    vi.mocked(boardsApi.getStates).mockRejectedValueOnce(new ApiError(401, 'expired'))
+
+    await store.refreshNow()
+    expect(auth.refreshAccessToken).toHaveBeenCalledOnce()
+    expect(boardsApi.getStates).toHaveBeenLastCalledWith('b', 'new-token', null, null)
   })
 })

@@ -194,6 +194,35 @@ describe('useAuthStore', () => {
     expect(store.accessToken).toBe('new-access')
   })
 
+  it('refreshAccessToken() keeps the rotated refresh token for the next refresh', async () => {
+    const { useAuthStore } = await import('./auth')
+    mockAuthApi.refresh
+      .mockResolvedValueOnce({ access_token: 'access-2', refresh_token: 'refresh-2' })
+      .mockResolvedValueOnce({ access_token: 'access-3', refresh_token: 'refresh-3' })
+
+    const store = useAuthStore()
+    store.refreshToken = 'refresh-1'
+
+    expect(await store.refreshAccessToken()).toBe(true)
+    expect(await store.refreshAccessToken()).toBe(true)
+    expect(mockAuthApi.refresh).toHaveBeenNthCalledWith(1, 'refresh-1')
+    expect(mockAuthApi.refresh).toHaveBeenNthCalledWith(2, 'refresh-2')
+    expect(store.accessToken).toBe('access-3')
+    expect(sessionStorage.getItem('orbvis_refresh_token')).toBe('refresh-3')
+  })
+
+  it('refreshAccessToken() shares one refresh between concurrent callers', async () => {
+    const { useAuthStore } = await import('./auth')
+    mockAuthApi.refresh.mockResolvedValue({ access_token: 'access-2', refresh_token: 'refresh-2' })
+
+    const store = useAuthStore()
+    store.refreshToken = 'refresh-1'
+
+    const results = await Promise.all([store.refreshAccessToken(), store.refreshAccessToken()])
+    expect(results).toEqual([true, true])
+    expect(mockAuthApi.refresh).toHaveBeenCalledOnce()
+  })
+
   it('refreshAccessToken() returns false when no refresh token', async () => {
     const { useAuthStore } = await import('./auth')
     const store = useAuthStore()

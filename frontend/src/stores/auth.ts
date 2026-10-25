@@ -233,12 +233,27 @@ export const useAuthStore = defineStore('auth', () => {
     router.push('/login')
   }
 
-  async function refreshAccessToken(): Promise<boolean> {
+  // /auth/refresh rotates the refresh token and blocks the old one, so the new
+  // one must be kept, and callers hitting a 401 at the same time (poll timer,
+  // stream reconnect) must share one refresh instead of each spending the same
+  // token, which would log the user out.
+  let _refreshing: Promise<boolean> | null = null
+
+  function refreshAccessToken(): Promise<boolean> {
+    _refreshing ??= _refresh().finally(() => {
+      _refreshing = null
+    })
+    return _refreshing
+  }
+
+  async function _refresh(): Promise<boolean> {
     if (!refreshToken.value) return false
     try {
       const tokens = await authApi.refresh(refreshToken.value)
       accessToken.value = tokens.access_token
+      refreshToken.value = tokens.refresh_token
       sessionStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token)
+      sessionStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token)
       return true
     } catch {
       clearAuth()
