@@ -10,11 +10,14 @@ Covered paths:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
 from starlette.requests import ClientDisconnect
+from starlette.types import Message, Scope
 
 from app.api.v1.states import _SubscriptionResponse
 from app.core import _jwt
@@ -25,6 +28,8 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
 )
+from app.main import app
+from app.models.user import User
 from app.schemas.board import BoardConfig
 
 
@@ -159,6 +164,57 @@ async def test_subscription_closes_when_client_drops_before_the_stream_starts():
         await response(scope, receive, send)
     assert started == []
     assert closed == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("client")
+async def test_sse_stream_sends_a_byte_at_once(
+    admin_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mod_proxy forwards the response headers only together with the first
+    body byte; a stream that stays silent until the first tick keeps the
+    browser's EventSource from opening."""
+    token = create_access_token(admin_user.user_id)
+    monkeypatch.setattr(
+        "app.api.v1.states.board_service.get_board", lambda name: BoardConfig(name=name)
+    )
+    monkeypatch.setattr("app.api.v1.states._broadcast_tasks", {"demo": _RunningTask()})
+    bodies: list[bytes] = []
+    first_body = asyncio.Event()
+
+    async def receive() -> Message:
+        if not bodies:
+            await asyncio.wait_for(first_body.wait(), timeout=2)
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message) -> None:
+        if message["type"] == "http.response.body" and message.get("body"):
+            bodies.append(cast(bytes, message["body"]))
+            first_body.set()
+
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"spec_version": "2.4", "version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/v1/sse/boards/demo",
+        "raw_path": b"/api/v1/sse/boards/demo",
+        "query_string": f"token={token}".encode(),
+        "headers": [(b"host", b"test")],
+        "client": ("127.0.0.1", 1),
+        "server": ("test", 80),
+        "root_path": "",
+    }
+    await asyncio.wait_for(app(scope, receive, send), timeout=5)
+    assert bodies[0].startswith(b":")
+    assert sse_stream_limiter.try_acquire(admin_user.name)
+    sse_stream_limiter.release(admin_user.name)
+
+
+class _RunningTask:
+    def done(self) -> bool:
+        return False
 
 
 class TestConcurrencyLimiter:

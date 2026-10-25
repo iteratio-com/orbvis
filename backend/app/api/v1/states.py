@@ -52,9 +52,11 @@ _broadcast_tasks: dict[str, asyncio.Task[None]] = {}
 # dying/recovering must reach clients even when no node-level delta exists.
 _dead_sites_snapshots: dict[tuple[str, str | None], list[str]] = {}
 
-# Heartbeat cadence for SSE keepalives. Sized below typical Apache ProxyTimeout
-# (60 s default in OMD) so the stream doesn't get torn down on idle boards.
-_SSE_KEEPALIVE_INTERVAL = 30.0
+# Heartbeat cadence for SSE keepalives. Well below the Apache ProxyTimeout (60 s
+# default in OMD) so idle boards aren't torn down, and short because the OMD
+# Apache only notices a closed browser tab when a write to it fails: until the
+# next keepalive the dead stream holds one of the user's capped stream slots.
+_SSE_KEEPALIVE_INTERVAL = 10.0
 
 
 async def _fetch_topology_for_user(
@@ -597,6 +599,9 @@ async def sse_board_states(
         raise
 
     async def event_stream() -> AsyncIterator[bytes]:
+        # mod_proxy holds the response headers back until the first body byte,
+        # so without this the browser's ``open`` waits for the first tick.
+        yield b": connected\n\n"
         while True:
             if await request.is_disconnected():
                 break
