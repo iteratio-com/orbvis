@@ -17,8 +17,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from app.core.middleware import (
     CSRFOriginMiddleware,
@@ -393,10 +394,24 @@ async def get_changelog() -> PlainTextResponse:
     return PlainTextResponse(_CHANGELOG)
 
 
+# Boards embed uploads only through <img>, CSS backgrounds and SVG <image>,
+# where the browser renders an SVG as an inert picture anyway. The policy only
+# bites when an upload is opened directly in a tab: no script, no external
+# fetch, whatever trick slipped past the upload sanitizer.
+UPLOAD_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+
+
+class UploadStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Content-Security-Policy"] = UPLOAD_CSP
+        return response
+
+
 _bg_dir = Path(settings.boards_dir) / "backgrounds"
 _bg_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/boards/backgrounds", StaticFiles(directory=str(_bg_dir)), name="backgrounds")
+app.mount("/boards/backgrounds", UploadStaticFiles(directory=str(_bg_dir)), name="backgrounds")
 
 _images_dir = Path(settings.boards_dir).parent / "images"
 _images_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/images", StaticFiles(directory=str(_images_dir)), name="images")
+app.mount("/images", UploadStaticFiles(directory=str(_images_dir)), name="images")

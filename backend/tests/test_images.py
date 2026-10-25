@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+from starlette.applications import Starlette
+from starlette.routing import Mount
+
+from app.main import UPLOAD_CSP, UploadStaticFiles, app
 
 # A 1x1 transparent PNG that passes the magic-byte image check.
 _PNG_BYTES = bytes.fromhex(
@@ -192,3 +197,18 @@ async def test_upload_rejects_gif_with_faked_content_type(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 415
+
+
+async def test_uploads_are_served_with_a_sandboxing_csp(tmp_path: Path) -> None:
+    (tmp_path / "icon.svg").write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg"/>')
+    upload_app = Starlette(routes=[Mount("/images", UploadStaticFiles(directory=str(tmp_path)))])
+    async with AsyncClient(transport=ASGITransport(app=upload_app), base_url="http://t") as ac:
+        response = await ac.get("/images/icon.svg")
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == UPLOAD_CSP
+
+
+def test_both_upload_mounts_use_the_csp_static_files() -> None:
+    mounts = {r.path: r.app for r in app.routes if isinstance(r, Mount)}
+    assert isinstance(mounts["/images"], UploadStaticFiles)
+    assert isinstance(mounts["/boards/backgrounds"], UploadStaticFiles)
