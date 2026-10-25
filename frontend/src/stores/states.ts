@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
-import { authApi, boardsApi, connectionsApi } from '@/api/client'
+import { ApiError, authApi, boardsApi, connectionsApi } from '@/api/client'
 import type {
   FolderTreeDelta,
   FolderTreeNode,
@@ -213,8 +213,12 @@ export const useStatesStore = defineStore('states', () => {
   let reprobe: EventSource | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let reprobeTimer: ReturnType<typeof setInterval> | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let currentMap: string | null = null
   let currentToken: string | undefined = undefined
+  // A reconnect can come long after connectToMap, when the access token handed
+  // in then has expired while the open stream kept working.
+  let renewToken: (() => Promise<string | null>) | undefined = undefined
   // True while we're on the HTTP polling fallback because SSE didn't connect.
   // Not permanent: a re-probe timer keeps testing SSE so a transient failure
   // (proxy hiccup) heals back to live streaming without a page reload.
@@ -222,12 +226,18 @@ export const useStatesStore = defineStore('states', () => {
   // Guards against overlapping re-probes when one is slow to open/fail.
   let probing = false
   const SSE_REPROBE_INTERVAL_MS = 60_000
+  const SSE_RECONNECT_DELAY_MS = 2_000
 
-  async function connectToMap(mapName: string, token?: string) {
+  async function connectToMap(
+    mapName: string,
+    token?: string,
+    renew?: () => Promise<string | null>
+  ) {
     if (currentMap === mapName && (sse?.readyState === EventSource.OPEN || pollTimer)) return
     disconnect()
     currentMap = mapName
     currentToken = token
+    renewToken = renew
     initialLoad.value = true
     try {
       await _fetchStates()
@@ -294,8 +304,20 @@ export const useStatesStore = defineStore('states', () => {
     let credential = token
     try {
       credential = (await authApi.streamTicket(token)).ticket
-    } catch {
-      // documented fallback above
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && renewToken) {
+        const renewed = await renewToken().catch(() => null)
+        if (renewed) {
+          currentToken = renewed
+          credential = renewed
+          try {
+            credential = (await authApi.streamTicket(renewed)).ticket
+          } catch {
+            // documented fallback above
+          }
+        }
+      }
+      // otherwise the documented fallback above
     }
     return `${_base}/api/v1/sse/boards/${encodeURIComponent(map)}?token=${encodeURIComponent(
       credential
@@ -402,14 +424,15 @@ export const useStatesStore = defineStore('states', () => {
     const url = await _sseUrl(map, currentToken)
     // Board switched / disconnected while the ticket fetch was in flight.
     if (currentMap !== map || sse) return
-    sse = new EventSource(url)
+    const stream = new EventSource(url)
+    sse = stream
     let opened = false
 
-    sse.onopen = () => {
+    stream.onopen = () => {
       opened = true
     }
 
-    sse.onmessage = (event) => {
+    stream.onmessage = (event) => {
       try {
         const msg: WebSocketStateUpdate | WebSocketTopologyUpdate = JSON.parse(event.data)
         if (msg.type === 'state_update') {
@@ -458,23 +481,39 @@ export const useStatesStore = defineStore('states', () => {
       }
     }
 
-    sse.onerror = () => {
-      // EventSource auto-reconnects on transient errors; close + fall back
-      // to polling only when the very first connect failed (proxy without
-      // streaming support, auth rejected etc.).
+    stream.onerror = () => {
+      if (sse !== stream) return
+      // Fall back to polling only when the very first connect failed (proxy
+      // without streaming support, auth rejected etc.).
       if (!opened) {
         pollingMode = true
         sseAvailable.value = false
-        sse?.close()
+        stream.close()
         sse = null
         _startPolling()
         return
       }
+      // The browser's own retry reuses this URL with its minutes-lived ticket
+      // and gives up for good on any non-200 answer (expired ticket, 429, a
+      // proxy 502 during a restart), freezing the board. Reconnect with a fresh
+      // ticket instead; if that first connect fails, polling takes over.
       connected.value = false
+      stream.close()
+      sse = null
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null
+          void _connect()
+        }, SSE_RECONNECT_DELAY_MS)
+      }
     }
   }
 
   function disconnect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = null
@@ -513,6 +552,7 @@ export const useStatesStore = defineStore('states', () => {
     folderOverride.value = null
     currentMap = null
     currentToken = undefined
+    renewToken = undefined
   }
 
   function getState(objectId: string): ObjectState | undefined {

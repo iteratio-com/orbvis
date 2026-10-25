@@ -1,9 +1,19 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError, authApi } from '@/api/client'
+
 import { useStatesStore } from './states'
 
 vi.mock('@/api/client', () => ({
+  ApiError: class ApiError extends Error {
+    constructor(
+      public status: number,
+      message: string
+    ) {
+      super(message)
+    }
+  },
   authApi: {
     streamTicket: vi.fn().mockResolvedValue({ ticket: 'short-lived-ticket', expires_in: 300 })
   },
@@ -109,6 +119,97 @@ describe('states store — SSE polling fallback + re-probe (T14)', () => {
     probe.onopen?.()
     await vi.advanceTimersByTimeAsync(0)
     expect(FakeEventSource.instances).toHaveLength(2)
+  })
+})
+
+describe('states store — reconnect after an established stream drops', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    FakeEventSource.instances = []
+    vi.stubGlobal('EventSource', FakeEventSource)
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  async function openStream(renew?: () => Promise<string | null>) {
+    const store = useStatesStore()
+    await store.connectToMap('board1', 'token', renew)
+    FakeEventSource.instances[0]!.onopen?.()
+    return store
+  }
+
+  it('reconnects with a fresh ticket instead of the browser retrying the stale URL', async () => {
+    const store = await openStream()
+    vi.mocked(authApi.streamTicket).mockResolvedValueOnce({ ticket: 'fresh', expires_in: 300 })
+
+    FakeEventSource.instances[0]!.onerror?.()
+    expect(FakeEventSource.instances[0]!.closed).toBe(true)
+    expect(store.connected).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(FakeEventSource.instances).toHaveLength(2)
+    expect(FakeEventSource.instances[1]!.url).toContain('token=fresh')
+    // Still a live stream, not the polling fallback.
+    expect(store.sseAvailable).toBe(true)
+  })
+
+  it('renews an expired access token before fetching the ticket', async () => {
+    const renew = vi.fn().mockResolvedValue('new-token')
+    await openStream(renew)
+    vi.mocked(authApi.streamTicket)
+      .mockRejectedValueOnce(new ApiError(401, 'expired'))
+      .mockResolvedValueOnce({ ticket: 'renewed-ticket', expires_in: 300 })
+
+    FakeEventSource.instances[0]!.onerror?.()
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(renew).toHaveBeenCalledOnce()
+    expect(authApi.streamTicket).toHaveBeenLastCalledWith('new-token')
+    expect(FakeEventSource.instances[1]!.url).toContain('token=renewed-ticket')
+  })
+
+  it('still reconnects when renewing the token fails', async () => {
+    await openStream(vi.fn().mockRejectedValue(new Error('offline')))
+    vi.mocked(authApi.streamTicket).mockRejectedValueOnce(new ApiError(401, 'expired'))
+
+    FakeEventSource.instances[0]!.onerror?.()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(FakeEventSource.instances).toHaveLength(2)
+  })
+
+  it('does not renew the token on errors other than 401', async () => {
+    const renew = vi.fn().mockResolvedValue('new-token')
+    await openStream(renew)
+    vi.mocked(authApi.streamTicket).mockRejectedValueOnce(new ApiError(502, 'proxy'))
+
+    FakeEventSource.instances[0]!.onerror?.()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(renew).not.toHaveBeenCalled()
+  })
+
+  it('falls back to polling when the reconnect itself is refused', async () => {
+    const store = await openStream()
+    FakeEventSource.instances[0]!.onerror?.()
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    FakeEventSource.instances[1]!.onerror?.()
+    expect(store.sseAvailable).toBe(false)
+    // No reconnect loop: only the 60 s re-probe opens the next attempt.
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(FakeEventSource.instances).toHaveLength(2)
+  })
+
+  it('cancels a pending reconnect on disconnect', async () => {
+    const store = await openStream()
+    FakeEventSource.instances[0]!.onerror?.()
+    store.disconnect()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(FakeEventSource.instances).toHaveLength(1)
   })
 })
 
