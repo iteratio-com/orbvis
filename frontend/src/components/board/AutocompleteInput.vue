@@ -82,9 +82,7 @@ const inputRef = ref<HTMLInputElement | null>(null)
 const dropdownStyle = ref<CSSProperties>({})
 
 const DROPDOWN_MAX_HEIGHT = 192
-const DROPDOWN_MAX_WIDTH = 512
 const DROPDOWN_GAP = 4
-const VIEWPORT_MARGIN = 8
 
 function updatePosition(): void {
   const el = inputRef.value
@@ -93,21 +91,7 @@ function updatePosition(): void {
   const spaceBelow = window.innerHeight - rect.bottom
   const spaceAbove = rect.top
   const openUp = spaceBelow < DROPDOWN_MAX_HEIGHT + DROPDOWN_GAP && spaceAbove > spaceBelow
-  // Long service names (filesystems, Robotmk tests) don't fit a narrow input,
-  // so the list may grow wider than it — towards whichever side has more room,
-  // since the inspector sits at the right viewport edge.
-  const roomRight = window.innerWidth - rect.left - VIEWPORT_MARGIN
-  const roomLeft = rect.right - VIEWPORT_MARGIN
-  const growRight = roomRight >= roomLeft
-  const maxWidth = Math.max(
-    rect.width,
-    Math.min(DROPDOWN_MAX_WIDTH, growRight ? roomRight : roomLeft)
-  )
-  const base: CSSProperties = {
-    ...(growRight ? { left: `${rect.left}px` } : { right: `${window.innerWidth - rect.right}px` }),
-    minWidth: `${rect.width}px`,
-    maxWidth: `${maxWidth}px`
-  }
+  const base: CSSProperties = { left: `${rect.left}px`, width: `${rect.width}px` }
   dropdownStyle.value = openUp
     ? {
         ...base,
@@ -235,7 +219,6 @@ function confirmSelection() {
 .orb-autocomplete__dropdown {
   position: fixed;
   z-index: 1000;
-  width: max-content;
   max-height: 192px;
   overflow: auto;
   background: var(--default-form-element-bg-color);
