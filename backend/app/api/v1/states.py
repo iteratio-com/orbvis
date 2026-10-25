@@ -6,11 +6,12 @@ import asyncio
 import json
 import logging
 import sqlite3
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
+from starlette.types import Receive, Scope, Send
 
 from app.api.v1.connections import auth_user_scope, build_topology_response
 from app.api.v1.deps import can_view_board as _can_view_board
@@ -20,7 +21,7 @@ from app.api.v1.types import BoardName
 from app.connections.base import ServiceMatchRow, ServiceRow
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.ratelimit import ws_connect_limiter
+from app.core.ratelimit import sse_stream_limiter, ws_connect_limiter
 from app.core.sse import Subscriber, manager
 from app.integrations.checkmk import resolve_folder_scope
 from app.models.user import User
@@ -493,6 +494,31 @@ async def folder_service_search(
     return FolderServiceSearchResult(matches=matches, truncated=truncated, limit=limit)
 
 
+class _SubscriptionResponse(StreamingResponse):
+    """Tears the board subscription down however the response ends.
+
+    Starlette sends the headers before it first iterates the stream, so a
+    client that drops in between never runs the generator at all; a
+    ``finally`` inside it would leak the subscriber and its stream slot.
+    """
+
+    def __init__(
+        self,
+        content: AsyncIterator[bytes],
+        *,
+        on_close: Callable[[], None],
+        headers: dict[str, str],
+    ) -> None:
+        super().__init__(content, media_type="text/event-stream", headers=headers)
+        self._on_close = on_close
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._on_close()
+
+
 @router.get("/sse/boards/{name}")
 async def sse_board_states(
     name: BoardName,
@@ -509,14 +535,12 @@ async def sse_board_states(
     stream ticket (``POST /auth/stream-ticket``); plain access tokens stay
     accepted for older external callers.
     """
-    client_ip = request.client.host if request.client else "unknown"
-    if ws_connect_limiter.is_blocked(client_ip):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limited")
-    ws_connect_limiter.record(client_ip)
-
     user = await authenticate_url_token(db, token)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    if ws_connect_limiter.is_blocked(user.name):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limited")
+    ws_connect_limiter.record(user.name)
     if not _can_view_board(user, name):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="No board view permission"
@@ -539,35 +563,48 @@ async def sse_board_states(
     if cfg.view.type == "foldertree":
         folder_scope = resolve_folder_scope(user.name, user.is_admin)
         group_key = f"{auth_user}#{folder_scope.key}"
-    sub = manager.subscribe(name, auth_user, folder_scope=folder_scope, group_key=group_key)
+    if not sse_stream_limiter.try_acquire(user.name):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many concurrent streams"
+        )
+    try:
+        sub = manager.subscribe(name, auth_user, folder_scope=folder_scope, group_key=group_key)
+    except BaseException:
+        sse_stream_limiter.release(user.name)
+        raise
 
-    # A new subscriber joins against a snapshot primed by the group's earlier
-    # members, so the next tick would send only a delta — leaving this client's
-    # REST-loaded states/tree to diverge on anything that changed before it
-    # joined. Drop the group's snapshot so the next tick is a full resend and the
-    # group reconverges (mirrors the Flow Board's force_full-on-join).
-    state_service.drop_states_snapshot(name, group_key)
+    def _teardown() -> None:
+        manager.unsubscribe(name, sub)
+        sse_stream_limiter.release(user.name)
 
-    if name not in _broadcast_tasks or _broadcast_tasks[name].done():
-        _broadcast_tasks[name] = asyncio.create_task(_broadcast_loop(name))
+    try:
+        # A new subscriber joins against a snapshot primed by the group's earlier
+        # members, so the next tick would send only a delta — leaving this client's
+        # REST-loaded states/tree to diverge on anything that changed before it
+        # joined. Drop the group's snapshot so the next tick is a full resend and the
+        # group reconverges (mirrors the Flow Board's force_full-on-join).
+        state_service.drop_states_snapshot(name, group_key)
 
-    # First-paint topology for Flow Boards so the client doesn't wait a full
-    # broadcast tick before the initial render.
-    if cfg.view.type == "flow":
-        await _push_topology_to(cfg, auth_user, [sub], force_full=True)
+        if name not in _broadcast_tasks or _broadcast_tasks[name].done():
+            _broadcast_tasks[name] = asyncio.create_task(_broadcast_loop(name))
+
+        # First-paint topology for Flow Boards so the client doesn't wait a full
+        # broadcast tick before the initial render.
+        if cfg.view.type == "flow":
+            await _push_topology_to(cfg, auth_user, [sub], force_full=True)
+    except BaseException:
+        _teardown()
+        raise
 
     async def event_stream() -> AsyncIterator[bytes]:
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    msg = await asyncio.wait_for(sub.queue.get(), timeout=_SSE_KEEPALIVE_INTERVAL)
-                    yield f"data: {msg}\n\n".encode()
-                except TimeoutError:
-                    yield b": keepalive\n\n"
-        finally:
-            manager.unsubscribe(name, sub)
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                msg = await asyncio.wait_for(sub.queue.get(), timeout=_SSE_KEEPALIVE_INTERVAL)
+                yield f"data: {msg}\n\n".encode()
+            except TimeoutError:
+                yield b": keepalive\n\n"
 
     headers = {
         # Apache buffers proxied responses by default; opt out so events flow
@@ -575,4 +612,4 @@ async def sse_board_states(
         "X-Accel-Buffering": "no",
         "Cache-Control": "no-cache, no-store",
     }
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+    return _SubscriptionResponse(event_stream(), on_close=_teardown, headers=headers)

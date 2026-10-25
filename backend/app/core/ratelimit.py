@@ -6,6 +6,8 @@ import time
 from collections import defaultdict, deque
 from threading import Lock
 
+from app.core.config import settings
+
 
 class RateLimiter:
     """Sliding-window rate limiter keyed by arbitrary string (e.g. client IP).
@@ -61,12 +63,57 @@ class RateLimiter:
             return max(0.0, q[0] + self._window - now)
 
 
+class ConcurrencyLimiter:
+    """Caps how many resources are held at once, per key and in total.
+
+    Where RateLimiter caps the *rate* of new acquisitions, this caps how many
+    are *held simultaneously*. Thread-safe; suitable for single-process
+    deployments.
+    """
+
+    def __init__(self, max_per_key: int, max_total: int) -> None:
+        self._max_per_key = max_per_key
+        self._max_total = max_total
+        self._counts: dict[str, int] = {}
+        self._total = 0
+        self._lock = Lock()
+
+    def try_acquire(self, key: str) -> bool:
+        """Reserve one slot for key; return False (reserving nothing) when full."""
+        with self._lock:
+            held = self._counts.get(key, 0)
+            if self._total >= self._max_total or held >= self._max_per_key:
+                return False
+            self._counts[key] = held + 1
+            self._total += 1
+            return True
+
+    def release(self, key: str) -> None:
+        """Give back one slot previously acquired for key (no-op at zero)."""
+        with self._lock:
+            held = self._counts.get(key, 0)
+            if held <= 0:
+                return
+            if held == 1:
+                del self._counts[key]
+            else:
+                self._counts[key] = held - 1
+            self._total -= 1
+
+
 # 5 failed login attempts per 15 minutes per IP
 login_limiter = RateLimiter(max_calls=5, window_seconds=15 * 60)
 
-# 30 WebSocket handshakes per minute per IP — covers typical reconnect storms
-# (tab restore, laptop wake) but blocks scripted connection floods.
+# 30 stream handshakes per minute per authenticated user — covers typical
+# reconnect storms (tab restore, laptop wake) but blocks scripted connection
+# floods. Keyed by user, not IP: behind the OMD double Apache every request
+# arrives from the loopback proxy hop, so an IP key would share one budget
+# across all users.
 ws_connect_limiter = RateLimiter(max_calls=30, window_seconds=60)
+
+sse_stream_limiter = ConcurrencyLimiter(
+    max_per_key=settings.sse_max_streams_per_user, max_total=settings.sse_max_streams_total
+)
 
 # Worldmap tile proxy: a pan/zoom burst legitimately pulls a few hundred tiles
 # per minute; the cap only stops scripted cache-fill/bandwidth abuse.

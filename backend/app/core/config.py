@@ -127,6 +127,17 @@ class Settings(BaseModel):
         le=64,
     )
 
+    # Concurrently held SSE streams. Behind the OMD Apache each stream pins a
+    # prefork worker (MaxClients 64), so the total stays well below that and the
+    # GUI and REST API always keep workers. A real client holds one stream per
+    # visible board tab.
+    sse_max_streams_per_user: int = Field(
+        default_factory=lambda: _env_int("SSE_MAX_STREAMS_PER_USER", 6), ge=1
+    )
+    sse_max_streams_total: int = Field(
+        default_factory=lambda: _env_int("SSE_MAX_STREAMS_TOTAL", 40), ge=1
+    )
+
     connection_warmup_interval: int = Field(
         default_factory=lambda: _env_int("CONNECTION_WARMUP_INTERVAL", 60)
     )
