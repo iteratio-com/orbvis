@@ -45,7 +45,27 @@ def _looks_like_svg_header(content: bytes) -> bool:
 # image/svg+xml, scripts run with the application's origin (XSS). ``use`` is
 # *not* blanket-rejected (internal `#fragment` references are both safe and
 # common); instead its href is constrained below.
-_SVG_FORBIDDEN_TAGS = frozenset({"script", "foreignObject"})
+# SMIL animation elements are included: <set>/<animate*> can rewrite an href to
+# a ``javascript:`` URI at runtime, and <handler> binds script.
+# iframe/object/embed carry their own subresource (srcdoc/data/src) and can run
+# script; the walk matches on the namespace-stripped local name, so listing them
+# also catches a foreign-namespace smuggle (``<x:iframe>``).
+# Lowercase and matched against the lowercased tag: an SVG parsed in an HTML
+# context has its tag names case-folded, so a case variant must not slip through.
+_SVG_FORBIDDEN_TAGS = frozenset(
+    {
+        "script",
+        "foreignobject",
+        "iframe",
+        "object",
+        "embed",
+        "set",
+        "animate",
+        "animatetransform",
+        "animatemotion",
+        "handler",
+    }
+)
 _SVG_FORBIDDEN_ATTR_PREFIXES = ("on",)
 
 # Schemes that can execute or read local resources — never allowed in any href.
@@ -100,7 +120,7 @@ def is_safe_svg(content: bytes) -> bool:
     if root.tag.rsplit("}", 1)[-1] != "svg":
         return False
     for elem in root.iter():
-        local_tag = elem.tag.rsplit("}", 1)[-1]
+        local_tag = elem.tag.rsplit("}", 1)[-1].lower()
         if local_tag in _SVG_FORBIDDEN_TAGS:
             return False
         is_use = local_tag == "use"

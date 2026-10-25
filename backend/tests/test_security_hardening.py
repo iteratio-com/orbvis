@@ -228,6 +228,38 @@ class TestSvgSafety:
         )
         assert is_safe_svg(bad) is False
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param(b'<iframe src="https://evil.example/"/>', id="iframe"),
+            pytest.param(
+                b'<x:iframe xmlns:x="http://www.w3.org/1999/xhtml" '
+                b'srcdoc="&lt;script&gt;alert(1)&lt;/script&gt;"/>',
+                id="foreign-ns-iframe",
+            ),
+            pytest.param(
+                b'<x:object xmlns:x="http://www.w3.org/1999/xhtml" data="https://evil.example/"/>',
+                id="foreign-ns-object",
+            ),
+            pytest.param(
+                b'<x:embed xmlns:x="http://www.w3.org/1999/xhtml" src="https://evil.example/"/>',
+                id="foreign-ns-embed",
+            ),
+            pytest.param(
+                b'<a><set attributeName="href" to="javascript:alert(1)"/><rect/></a>', id="smil-set"
+            ),
+            pytest.param(b'<animate attributeName="x"/>', id="animate"),
+            pytest.param(b'<animateTransform attributeName="transform"/>', id="animatexf"),
+            pytest.param(b"<animateMotion/>", id="animatemotion"),
+            pytest.param(b"<handler>alert(1)</handler>", id="handler"),
+            pytest.param(b"<SCRIPT>alert(1)</SCRIPT>", id="upper-script"),
+            pytest.param(b"<foreignobject/>", id="lower-foreignobject"),
+        ],
+    )
+    def test_rejects_script_capable_elements(self, body: bytes) -> None:
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg">' + body + b"</svg>"
+        assert is_safe_svg(svg) is False
+
     def test_accepts_doctype_export(self) -> None:
         # Illustrator/Inkscape exports carry the standard SVG DOCTYPE; it must
         # be accepted (entity/external protections stay on, see below).
