@@ -14,13 +14,14 @@
       @keydown.down.prevent="moveDown"
       @keydown.up.prevent="moveUp"
       @keydown.enter.prevent="confirmSelection"
-      @keydown.escape="open = false"
+      @keydown.escape="onEscape"
     />
     <span v-if="loading" class="orb-autocomplete__loading">…</span>
 
     <Teleport to="body">
       <div
-        v-if="open && filtered.length > 0"
+        v-if="dropdownVisible"
+        ref="dropdownRef"
         class="orb-autocomplete__dropdown"
         :style="dropdownStyle"
       >
@@ -72,13 +73,17 @@ const emit = defineEmits<{
 }>()
 
 const open = ref(false)
-const activeIndex = ref(-1)
+// Tracked by value rather than position: suggestions can be replaced while an
+// entry is highlighted (async or server-side search), and Enter must not then
+// commit whatever now sits at the old position.
+const highlightedValue = ref<string | null>(null)
 
 // The dropdown is teleported to <body> so the inspector panel's `overflow:auto`
 // can't clip it, and anchored with a fixed position that flips above the input
 // when there isn't room below — without this a metric/service list low in the
 // panel opened off-screen and its entries were unreachable.
 const inputRef = ref<HTMLInputElement | null>(null)
+const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownStyle = ref<CSSProperties>({})
 
 const DROPDOWN_MAX_HEIGHT = 192
@@ -144,6 +149,14 @@ const filtered = computed(() => {
   return list.sort((a, b) => a.label.localeCompare(b.label)).slice(0, SUGGESTION_LIMIT)
 })
 
+const dropdownVisible = computed(() => open.value && filtered.value.length > 0)
+
+const activeIndex = computed(() =>
+  highlightedValue.value === null
+    ? -1
+    : filtered.value.findIndex((item) => item.value === highlightedValue.value)
+)
+
 const truncated = computed(() => {
   const q = displayValue.value.toLowerCase()
   const matchCount = q
@@ -160,7 +173,7 @@ function onInput(e: Event) {
   // and the actual value only after a selection is confirmed via select().
   emit('update:modelValue', (e.target as HTMLInputElement).value)
   open.value = true
-  activeIndex.value = -1
+  highlightedValue.value = null
   void nextTick(updatePosition)
 }
 
@@ -168,7 +181,7 @@ function onBlur() {
   // small delay so mousedown on option fires first
   setTimeout(() => {
     open.value = false
-    activeIndex.value = -1
+    highlightedValue.value = null
   }, 150)
 }
 
@@ -176,19 +189,36 @@ function select(value: string) {
   emit('update:modelValue', value)
   emit('change', value)
   open.value = false
-  activeIndex.value = -1
+  highlightedValue.value = null
+}
+
+function highlight(i: number) {
+  highlightedValue.value = filtered.value[i]?.value ?? null
+  if (i < 0) return
+  void nextTick(() => {
+    dropdownRef.value?.children[i]?.scrollIntoView({ block: 'nearest' })
+  })
 }
 
 function moveDown() {
-  activeIndex.value = Math.min(activeIndex.value + 1, filtered.value.length - 1)
+  highlight(Math.min(activeIndex.value + 1, filtered.value.length - 1))
 }
 
 function moveUp() {
-  activeIndex.value = Math.max(activeIndex.value - 1, -1)
+  highlight(Math.max(activeIndex.value - 1, -1))
+}
+
+// Only swallow Escape while the list is showing: modals close on a window
+// Escape listener and would otherwise discard the edits along with the list.
+function onEscape(e: KeyboardEvent) {
+  if (!dropdownVisible.value) return
+  e.stopPropagation()
+  open.value = false
+  highlightedValue.value = null
 }
 
 function confirmSelection() {
-  if (activeIndex.value >= 0) {
+  if (dropdownVisible.value && activeIndex.value >= 0) {
     const item = filtered.value[activeIndex.value]
     if (item) select(item.value)
   }
