@@ -260,6 +260,98 @@ class TestSvgSafety:
         svg = b'<svg xmlns="http://www.w3.org/2000/svg">' + body + b"</svg>"
         assert is_safe_svg(svg) is False
 
+    @pytest.mark.parametrize(
+        "svg",
+        [
+            pytest.param(
+                b'<?xml version="1.0"?><?xml-stylesheet type="text/xsl" href="evil.xsl"?>'
+                b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+                id="xslt-pi",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>@import url("https://evil.example/x.css");</style></svg>',
+                id="style-import",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b"<style><x/>rect{fill:url(//evil.example/p)}</style></svg>",
+                id="style-tail-url",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<rect style="fill:url(https://evil.example/p)"/></svg>',
+                id="style-attr-url",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>@\\69mport "https://evil.example/x.css";</style></svg>',
+                id="style-escaped-import",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<rect style="fill:url(\\68 ttps://evil.example/p)"/></svg>',
+                id="style-escaped-scheme",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>text{content:"/*"} rect{fill:url(https://evil.example/p)}</style></svg>',
+                id="style-comment-in-string",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<rect fill="url(https://evil.example/x.svg#g)"/></svg>',
+                id="remote-fill",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<rect filter="url(//evil.example/f.svg#f)"/></svg>',
+                id="remote-filter",
+            ),
+            pytest.param(
+                '<?xml version="1.0" encoding="UTF-16"?>'
+                '<?xml-stylesheet type="text/xsl" href="evil.xsl"?>'
+                '<svg xmlns="http://www.w3.org/2000/svg"/>'.encode("utf-16"),
+                id="utf16-xslt-pi",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<image href="https://evil.example/track.png"/></svg>',
+                id="remote-image",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg" '
+                b'xmlns:xlink="http://www.w3.org/1999/xlink">'
+                b'<filter><feImage xlink:href="https://evil.example/x"/></filter></svg>',
+                id="remote-feimage",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<a href="java&#9;script:alert(1)"><rect/></a></svg>',
+                id="tab-in-scheme",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<a href="&#1;javascript:alert(1)"><rect/></a></svg>',
+                id="leading-control-char",
+            ),
+        ],
+    )
+    def test_rejects_external_and_obfuscated_references(self, svg: bytes) -> None:
+        assert is_safe_svg(svg) is False
+
+    def test_accepts_local_paint_and_embedded_raster(self) -> None:
+        good = (
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<defs><linearGradient id="g"/></defs>'
+            b"<style>rect{fill:url(#g)}</style>"
+            b'<rect style="fill:url(#g)" fill="url(#g)" mask="url(#g)"/>'
+            b'<image href="data:image/png;base64,iVBORw0KGgo="/>'
+            b'<a href="https://example.com/"><circle r="1"/></a></svg>'
+        )
+        assert is_safe_svg(good) is True
+
     def test_accepts_doctype_export(self) -> None:
         # Illustrator/Inkscape exports carry the standard SVG DOCTYPE; it must
         # be accepted (entity/external protections stay on, see below).

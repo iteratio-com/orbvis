@@ -6,6 +6,8 @@ block the usual XXE / billion-laughs footguns by parsing with defusedxml.
 
 from __future__ import annotations
 
+import re
+
 from defusedxml import ElementTree as DefusedET
 from defusedxml.common import DefusedXmlException
 
@@ -70,6 +72,11 @@ _SVG_FORBIDDEN_ATTR_PREFIXES = ("on",)
 
 # Schemes that can execute or read local resources — never allowed in any href.
 _DANGEROUS_URI_SCHEMES = ("javascript:", "vbscript:", "file:")
+# Browsers drop ASCII whitespace and control chars from a URL before resolving
+# its scheme, so ``java&#9;script:`` runs as ``javascript:``. The XML parser
+# keeps the character reference as a literal control char and ``strip()`` only
+# touches the ends, so every C0 control / space goes before the comparison.
+_URL_IGNORED_CHARS = re.compile(r"[\x00-\x20]")
 # data: URIs are allowed only for embedded raster images. text/html and
 # image/svg+xml data URIs can carry script, so they stay rejected.
 _SAFE_DATA_URI_PREFIXES = (
@@ -80,21 +87,56 @@ _SAFE_DATA_URI_PREFIXES = (
     "data:image/webp",
 )
 
+# Elements whose href pulls an external subresource: <use> clones a referenced
+# fragment, <image>/<feImage> fetch an image. A remote target turns an icon into
+# a tracker / client-side SSRF and, for <use>, can pull in and run external SVG.
+_SVG_LOCAL_HREF_ONLY_TAGS = frozenset({"use", "image", "feimage"})
 
-def _href_is_safe(value: str, *, is_use: bool) -> bool:
+# CSS in a <style> block or style attribute can pull external resources via
+# @import or url(...), leaking the viewer's IP and enabling CSS exfiltration.
+# Local url(#gradient) / url(data:...) paints stay allowed.
+_CSS_EXTERNAL_REF = re.compile(r"@import|url\(\s*['\"]?\s*(?:https?:|//|file:)", re.IGNORECASE)
+# The browser decodes escapes and drops comments before it tokenises CSS, so
+# ``@\69mport`` or ``url(\68ttps://…)`` would slip past the raw-text match.
+_CSS_COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.DOTALL)
+_CSS_HEX_ESCAPE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?")
+_CSS_CHAR_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+
+# ElementTree drops processing instructions, so the element walk never sees a
+# ``<?xml-stylesheet ...?>`` — yet the stored bytes keep it, and a browser opening
+# the .svg directly applies the referenced XSLT, which can emit script in our
+# origin. Only the XML declaration itself (target ``xml``) is allowed.
+_XML_PI_TARGET = re.compile(rb"<\?\s*([^\s?>]+)")
+
+
+def _href_is_safe(value: str, *, local_only: bool) -> bool:
     """Whether an href / xlink:href value is safe for a sandboxed SVG icon."""
     v = value.strip()
-    low = v.lower()
+    low = _URL_IGNORED_CHARS.sub("", v).lower()
     if low.startswith(_DANGEROUS_URI_SCHEMES):
         return False
     if low.startswith("data:"):
         # Only embedded rasters; svg+xml/text data URIs could carry script.
         return low.startswith(_SAFE_DATA_URI_PREFIXES)
-    if is_use:
-        # <use> may only reference local fragments — a remote target lets the
-        # icon pull in (and run) external SVG content.
+    if local_only:
         return v.startswith("#")
     return True
+
+
+def _css_has_external_ref(css: str) -> bool:
+    def _hex(m: re.Match[str]) -> str:
+        cp = int(m.group(1), 16)
+        return chr(cp) if 0 < cp <= 0x10FFFF and not 0xD800 <= cp <= 0xDFFF else "\ufffd"
+
+    decoded = _CSS_CHAR_ESCAPE.sub(r"\1", _CSS_HEX_ESCAPE.sub(_hex, css))
+    # Both variants: stripping a "/*" that sits inside a string would otherwise
+    # hide a real reference after it.
+    return any(_CSS_EXTERNAL_REF.search(v) for v in (decoded, _CSS_COMMENT.sub("", decoded)))
+
+
+def _has_unsafe_processing_instruction(content: bytes) -> bool:
+    """True if *content* carries any XML PI other than the ``<?xml?>`` declaration."""
+    return any(m.group(1).lower() != b"xml" for m in _XML_PI_TARGET.finditer(content))
 
 
 def is_safe_svg(content: bytes) -> bool:
@@ -106,9 +148,14 @@ def is_safe_svg(content: bytes) -> bool:
     A DOCTYPE is permitted (the standard SVG DTD reference is ubiquitous in
     exported assets) but ``forbid_entities``/``forbid_external`` stay on, so
     billion-laughs entity expansion and XXE external entities are still blocked.
-    The parsed tree is then walked to reject ``<script>``, on-event attributes,
-    ``<foreignObject>``, remote ``<use>`` targets, and script-bearing URIs.
+    The parsed tree is then walked to reject script-capable elements, on-event
+    attributes, remote ``<use>``/``<image>`` targets, external CSS references,
+    script-bearing URIs, and any processing instruction but ``<?xml?>``.
     """
+    # The PI scan below works on raw bytes, so only ASCII-compatible encodings
+    # are accepted; a UTF-16 body would hide ``<?xml-stylesheet?>`` from it.
+    if b"\x00" in content:
+        return False
     parser = DefusedET.DefusedXMLParser(
         forbid_dtd=False, forbid_entities=True, forbid_external=True
     )
@@ -119,16 +166,26 @@ def is_safe_svg(content: bytes) -> bool:
         return False
     if root.tag.rsplit("}", 1)[-1] != "svg":
         return False
+    if _has_unsafe_processing_instruction(content):
+        return False
     for elem in root.iter():
         local_tag = elem.tag.rsplit("}", 1)[-1].lower()
         if local_tag in _SVG_FORBIDDEN_TAGS:
             return False
-        is_use = local_tag == "use"
+        # itertext(), not .text: a child inside <style> pushes the rest into its
+        # tail, so ``<style><x/>@import url(…)</style>`` would otherwise slip past.
+        if local_tag == "style" and _css_has_external_ref("".join(elem.itertext())):
+            return False
+        local_only = local_tag in _SVG_LOCAL_HREF_ONLY_TAGS
         for attr_name, attr_val in elem.attrib.items():
             local_attr = attr_name.rsplit("}", 1)[-1].lower()
             if local_attr.startswith(_SVG_FORBIDDEN_ATTR_PREFIXES):
                 return False
-            if local_attr in ("href", "xlink:href") and not _href_is_safe(attr_val, is_use=is_use):
+            # Not only ``style``: presentation attributes (fill, filter, mask,
+            # clip-path, marker-*) take a url() paint reference as well.
+            if _css_has_external_ref(attr_val):
+                return False
+            if local_attr == "href" and not _href_is_safe(attr_val, local_only=local_only):
                 return False
     return True
 
