@@ -262,7 +262,7 @@ def test_apply_extra_host_columns_map_correctly():
         0,  # active_checks_enabled
         {"cmk/site": "prod"},  # labels
     ]
-    _apply_extra(state, row, offset=5, include_address=True)
+    _apply_extra(state, row, offset=5, include_address=True, with_labels=True)
     assert state.address == "192.0.2.1"
     assert state.alias == "ALIAS"
     assert state.last_check == 1700.0
@@ -298,7 +298,7 @@ def test_apply_extra_service_columns_map_correctly():
         {"SSB": "12-4"},  # labels
         {"rack": "R12-04"},  # host_labels
     ]
-    _apply_extra(state, row, offset=7)
+    _apply_extra(state, row, offset=7, with_labels=True)
     assert state.last_check == 1700.0
     assert state.next_check == 1760.0
     assert state.state_type == "SOFT"
@@ -312,7 +312,7 @@ def test_apply_extra_service_label_wins_over_host_label():
     state = ObjectState(object_id="", type="service", state="OK")
     row = ["h", "s", 0, "out", "", 0, 0, 1700.0, 1760.0, 1, 1, 3, 1500.0, 1, 1]
     row += [{"rack": "R1", "SSB": "12-4"}, {"rack": "R12-04", "location": "DC1"}]
-    _apply_extra(state, row, offset=7)
+    _apply_extra(state, row, offset=7, with_labels=True)
     assert state.labels == {"rack": "R1", "SSB": "12-4", "location": "DC1"}
 
 
@@ -320,8 +320,71 @@ def test_apply_extra_without_labels_column_keeps_empty_dict():
     """Rows from a core that returned no labels column must not raise."""
     state = ObjectState(object_id="", type="service", state="OK")
     row = ["h", "s", 0, "out", "", 0, 0, 1700.0, 1760.0, 1, 1, 3, 1500.0, 1, 1]
+    _apply_extra(state, row, offset=7, with_labels=True)
+    assert state.labels == {}
+
+
+def test_apply_extra_ignores_labels_unless_requested():
+    state = ObjectState(object_id="", type="service", state="OK")
+    row = ["h", "s", 0, "out", "", 0, 0, 1700.0, 1760.0, 1, 1, 3, 1500.0, 1, 1]
+    row += [{"SSB": "12-4"}, {"rack": "R12-04"}]
     _apply_extra(state, row, offset=7)
     assert state.labels == {}
+
+
+@pytest.mark.asyncio
+async def test_state_queries_request_labels_only_for_targeted_lookups(monkeypatch):
+    """Radar's all_hosts / all_services bulk queries must stay without labels.
+
+    On large sites every service would otherwise carry its own and its host's
+    labels on every refresh, although radar boards never render them.
+    """
+    connection = _make_livestatus_connection()
+    queries: list[str] = []
+
+    async def _fake_query(query: str) -> list[tuple[str | None, list[object]]]:
+        queries.append(query)
+        return []
+
+    monkeypatch.setattr(connection, "_query_with_site", _fake_query)
+
+    def _columns() -> list[str]:
+        line = next(ln for ln in queries.pop().splitlines() if ln.startswith("Columns:"))
+        return line.split(":", 1)[1].split()
+
+    for only_hard in (False, True):
+        await connection.get_all_hosts_states(only_hard=only_hard)
+        assert "labels" not in _columns()
+        await connection.get_all_services_states(only_hard=only_hard)
+        cols = _columns()
+        assert "labels" not in cols
+        assert "host_labels" not in cols
+
+        await connection.get_hosts_states(["h1"], only_hard=only_hard)
+        assert _columns()[-1] == "labels"
+        await connection.get_services_states([("h1", "s1")], only_hard=only_hard)
+        assert _columns()[-2:] == ["labels", "host_labels"]
+
+    for fetch in (connection.get_host_state, connection.get_host_hard_state):
+        await fetch("h1")
+        assert _columns()[-1] == "labels"
+    for fetch_svc in (connection.get_service_state, connection.get_service_hard_state):
+        await fetch_svc("h1", "s1")
+        assert _columns()[-2:] == ["labels", "host_labels"]
+
+
+@pytest.mark.asyncio
+async def test_targeted_service_states_parse_labels(monkeypatch):
+    connection = _make_livestatus_connection()
+    row: list[object] = ["h1", "s1", 0, "ok", "", 0, 0, 1700.0, 1760.0, 1, 1, 3, 1500.0, 1, 1]
+    row += [{"SSB": "12-4"}, {"rack": "R12-04"}]
+
+    async def _fake_query(query: str) -> list[tuple[str | None, list[object]]]:
+        return [(None, row)]
+
+    monkeypatch.setattr(connection, "_query_with_site", _fake_query)
+    states = await connection.get_services_states([("h1", "s1")])
+    assert states[("h1", "s1")].labels == {"SSB": "12-4", "rack": "R12-04"}
 
 
 def _make_livestatus_connection() -> LivestatusConnection:

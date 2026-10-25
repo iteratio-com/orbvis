@@ -570,12 +570,17 @@ _STATE_TYPE_MAP = {0: "SOFT", 1: "HARD"}
 
 _HOST_EXTRA_COLS = (
     "address alias last_check next_check state_type current_attempt max_check_attempts"
-    " last_state_change notifications_enabled active_checks_enabled labels"
+    " last_state_change notifications_enabled active_checks_enabled"
 )
 _SVC_EXTRA_COLS = (
     "last_check next_check state_type current_attempt max_check_attempts last_state_change"
-    " notifications_enabled active_checks_enabled labels host_labels"
+    " notifications_enabled active_checks_enabled"
 )
+# Labels feed {{label:KEY}} and the object-label template on static and
+# worldmap boards. Only the targeted per-object queries append them; the
+# all_hosts / all_services bulk queries behind radar boards stay lean.
+_HOST_LABEL_COLS = "labels"
+_SVC_LABEL_COLS = "labels host_labels"
 
 # Column lists for the on-demand object-details endpoint. Order matters —
 # _build_details indexes positionally.
@@ -594,7 +599,12 @@ _DOWNTIME_COLS = "id author comment start_time end_time fixed"
 
 
 def _apply_extra(
-    state: ObjectState, row: LivestatusRow, offset: int = 5, *, include_address: bool = False
+    state: ObjectState,
+    row: LivestatusRow,
+    offset: int = 5,
+    *,
+    include_address: bool = False,
+    with_labels: bool = False,
 ) -> ObjectState:
     """Fill the tail ObjectState fields (address, timings, attempt counters) from the row."""
     col = offset
@@ -613,6 +623,8 @@ def _apply_extra(
     state.last_state_change = lsc if lsc > 0 else None
     state.notifications_enabled = _row_bool(row, col + 6, default=True)
     state.active_checks_enabled = _row_bool(row, col + 7, default=True)
+    if not with_labels:
+        return state
     # Service rows carry their host's labels in a trailing host_labels column
     # (rack, location, ... usually live on the host). The object's own labels
     # win on conflicts. Host rows end at labels, so the lookup yields {}.
@@ -679,6 +691,7 @@ def _build_state_from_row(
     type_: str,
     *,
     include_address: bool = False,
+    with_labels: bool = False,
     site_id: str | None = None,
 ) -> ObjectState:
     """Construct an ObjectState from a livestatus row with the standard 5-column prefix."""
@@ -692,11 +705,11 @@ def _build_state_from_row(
         in_downtime=_row_int(row, 4) > 0,
         site_id=site_id,
     )
-    return _apply_extra(state, row, include_address=include_address)
+    return _apply_extra(state, row, include_address=include_address, with_labels=with_labels)
 
 
 def _parse_host_state_row(
-    row: LivestatusRow, *, site_id: str | None = None
+    row: LivestatusRow, *, site_id: str | None = None, with_labels: bool = False
 ) -> tuple[str, ObjectState]:
     """Parse host row [name, state, output, perf_data, ack, downtime, ...extra]."""
     state = ObjectState(
@@ -709,11 +722,13 @@ def _parse_host_state_row(
         in_downtime=_row_int(row, 5) > 0,
         site_id=site_id,
     )
-    return _row_str(row, 0), _apply_extra(state, row, offset=6, include_address=True)
+    return _row_str(row, 0), _apply_extra(
+        state, row, offset=6, include_address=True, with_labels=with_labels
+    )
 
 
 def _parse_service_state_row(
-    row: LivestatusRow, *, site_id: str | None = None
+    row: LivestatusRow, *, site_id: str | None = None, with_labels: bool = False
 ) -> tuple[tuple[str, str], ObjectState]:
     """Parse service row [host_name, description, state, output, perf_data, ack, downtime, ...extra]."""
     state = ObjectState(
@@ -726,7 +741,9 @@ def _parse_service_state_row(
         in_downtime=_row_int(row, 6) > 0,
         site_id=site_id,
     )
-    return (_row_str(row, 0), _row_str(row, 1)), _apply_extra(state, row, offset=7)
+    return (_row_str(row, 0), _row_str(row, 1)), _apply_extra(
+        state, row, offset=7, with_labels=with_labels
+    )
 
 
 def _row_strs(row: LivestatusRow, idx: int) -> list[str]:
@@ -941,7 +958,7 @@ class LivestatusConnection(ConnectionBase):
     async def get_host_state(self, hostname: str) -> ObjectState:
         query = (
             f"GET hosts\n"
-            f"Columns: state plugin_output perf_data acknowledged scheduled_downtime_depth {_HOST_EXTRA_COLS}\n"
+            f"Columns: state plugin_output perf_data acknowledged scheduled_downtime_depth {_HOST_EXTRA_COLS} {_HOST_LABEL_COLS}\n"
             f"Filter: name = {_ls_escape(hostname)}\n"
         )
         tagged = await self._query_with_site(query)
@@ -952,6 +969,7 @@ class LivestatusConnection(ConnectionBase):
             row,
             _HOST_STATE_MAP,
             "host",
+            with_labels=True,
             include_address=True,
             site_id=_default_site_id(sid),
         )
@@ -959,7 +977,7 @@ class LivestatusConnection(ConnectionBase):
     async def get_service_state(self, host: str, service: str) -> ObjectState:
         query = (
             f"GET services\n"
-            f"Columns: state plugin_output perf_data acknowledged scheduled_downtime_depth {_SVC_EXTRA_COLS}\n"
+            f"Columns: state plugin_output perf_data acknowledged scheduled_downtime_depth {_SVC_EXTRA_COLS} {_SVC_LABEL_COLS}\n"
             f"Filter: host_name = {_ls_escape(host)}\n"
             f"Filter: description = {_ls_escape(service)}\n"
         )
@@ -971,6 +989,7 @@ class LivestatusConnection(ConnectionBase):
             row,
             _SERVICE_STATE_MAP,
             "service",
+            with_labels=True,
             site_id=_default_site_id(sid),
         )
 
@@ -1067,7 +1086,7 @@ class LivestatusConnection(ConnectionBase):
     async def get_host_hard_state(self, hostname: str) -> ObjectState:
         query = (
             f"GET hosts\n"
-            f"Columns: last_hard_state plugin_output perf_data acknowledged scheduled_downtime_depth {_HOST_EXTRA_COLS}\n"
+            f"Columns: last_hard_state plugin_output perf_data acknowledged scheduled_downtime_depth {_HOST_EXTRA_COLS} {_HOST_LABEL_COLS}\n"
             f"Filter: name = {_ls_escape(hostname)}\n"
         )
         tagged = await self._query_with_site(query)
@@ -1078,6 +1097,7 @@ class LivestatusConnection(ConnectionBase):
             row,
             _HOST_STATE_MAP,
             "host",
+            with_labels=True,
             include_address=True,
             site_id=_default_site_id(sid),
         )
@@ -1085,7 +1105,7 @@ class LivestatusConnection(ConnectionBase):
     async def get_service_hard_state(self, host: str, service: str) -> ObjectState:
         query = (
             f"GET services\n"
-            f"Columns: last_hard_state plugin_output perf_data acknowledged scheduled_downtime_depth {_SVC_EXTRA_COLS}\n"
+            f"Columns: last_hard_state plugin_output perf_data acknowledged scheduled_downtime_depth {_SVC_EXTRA_COLS} {_SVC_LABEL_COLS}\n"
             f"Filter: host_name = {_ls_escape(host)}\n"
             f"Filter: description = {_ls_escape(service)}\n"
         )
@@ -1097,6 +1117,7 @@ class LivestatusConnection(ConnectionBase):
             row,
             _SERVICE_STATE_MAP,
             "service",
+            with_labels=True,
             site_id=_default_site_id(sid),
         )
 
@@ -2100,10 +2121,13 @@ class LivestatusConnection(ConnectionBase):
         tagged = await self._query_with_site(
             f"GET hosts\n"
             f"Columns: name {state_col} plugin_output perf_data acknowledged "
-            f"scheduled_downtime_depth {_HOST_EXTRA_COLS}\n"
+            f"scheduled_downtime_depth {_HOST_EXTRA_COLS} {_HOST_LABEL_COLS}\n"
             f"{filters}"
         )
-        return dict(_parse_host_state_row(r, site_id=_default_site_id(sid)) for sid, r in tagged)
+        return dict(
+            _parse_host_state_row(r, site_id=_default_site_id(sid), with_labels=True)
+            for sid, r in tagged
+        )
 
     async def get_all_hosts_states(self, only_hard: bool = False) -> dict[str, ObjectState]:
         state_col = "last_hard_state" if only_hard else "state"
@@ -2234,10 +2258,13 @@ class LivestatusConnection(ConnectionBase):
         tagged = await self._query_with_site(
             f"GET services\n"
             f"Columns: host_name description {state_col} plugin_output perf_data "
-            f"acknowledged scheduled_downtime_depth {_SVC_EXTRA_COLS}\n"
+            f"acknowledged scheduled_downtime_depth {_SVC_EXTRA_COLS} {_SVC_LABEL_COLS}\n"
             f"{filter_lines}"
         )
-        return dict(_parse_service_state_row(r, site_id=_default_site_id(sid)) for sid, r in tagged)
+        return dict(
+            _parse_service_state_row(r, site_id=_default_site_id(sid), with_labels=True)
+            for sid, r in tagged
+        )
 
     # Above this host count we drop the per-host filter list and post-filter
     # in Python — mirrors cmk.gui.nodevis.topology._fetch_data: the core
