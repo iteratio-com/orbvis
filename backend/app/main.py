@@ -4,10 +4,13 @@ import asyncio
 import logging
 import os
 import secrets
+import signal
 import sqlite3
-from collections.abc import AsyncIterator
+import threading
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import FrameType
 from typing import TypedDict
 
 from fastapi import FastAPI
@@ -53,6 +56,7 @@ from app.connections.test import TestConnection
 from app.core.config import settings
 from app.core.database import _connect, _ensure_schema
 from app.core.security import hash_password
+from app.core.sse import manager as sse_manager
 from app.form_specs import FORM_SPECS_AVAILABLE
 from app.integrations import checkmk as cmk_integration
 
@@ -165,6 +169,34 @@ def _bootstrap_database() -> None:
         conn.close()
 
 
+def _end_streams_on_exit() -> None:
+    """Close the SSE streams as soon as the server is asked to stop.
+
+    uvicorn waits for every open connection before it runs the lifespan
+    shutdown, and a board stream never ends on its own: SIGTERM would hang
+    until --timeout-graceful-shutdown cancels the streams (or forever without
+    it, so ``docker stop`` kills the process before flush_all() runs). The
+    server's own handler stays in charge; this one only runs first.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        previous = signal.getsignal(sig)
+        if not callable(previous):
+            continue
+
+        def _handler(
+            signum: int,
+            frame: FrameType | None,
+            previous: Callable[[int, FrameType | None], object] = previous,
+        ) -> None:
+            loop.call_soon_threadsafe(sse_manager.close_all)
+            previous(signum, frame)
+
+        signal.signal(sig, _handler)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cmk_integration.setup()
@@ -231,6 +263,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     warmup_task = asyncio.create_task(connection_service.warmup_loop())
+    _end_streams_on_exit()
 
     yield
     logger.info("Shutting down OrbVis backend.")

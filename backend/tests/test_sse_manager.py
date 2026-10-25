@@ -8,7 +8,13 @@ subscribers share one delta computation, and the drop-oldest backpressure in
 from __future__ import annotations
 
 import asyncio
+import signal
+from collections.abc import Callable
+from types import FrameType
 
+import pytest
+
+from app import main
 from app.core.sse import Subscriber, SubscriptionManager
 
 
@@ -80,3 +86,52 @@ class TestPush:
         mgr.push("board1", [sub], "new")
         assert sub.queue.get_nowait() == "new"
         assert sub.queue.empty()
+
+
+class TestCloseAll:
+    def test_every_stream_gets_the_end_marker(self) -> None:
+        mgr = SubscriptionManager()
+        subs = [mgr.subscribe("board1", "alice"), mgr.subscribe("board2", "bob")]
+        mgr.push("board1", [subs[0]], "pending")
+        mgr.close_all()
+        assert subs[0].queue.get_nowait() == "pending"
+        assert subs[0].queue.get_nowait() is None
+        assert subs[1].queue.get_nowait() is None
+
+    def test_a_full_queue_still_gets_the_end_marker(self) -> None:
+        mgr = SubscriptionManager()
+        sub = mgr.subscribe("board1", "alice")
+        while not sub.queue.full():
+            sub.queue.put_nowait("x")
+        mgr.close_all()
+        items = [sub.queue.get_nowait() for _ in range(sub.queue.qsize())]
+        assert items[-1] is None
+
+
+class TestEndStreamsOnExit:
+    async def test_signal_closes_streams_then_runs_the_server_handler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        installed: dict[int, Callable[[int, FrameType | None], None]] = {}
+        server_calls: list[int] = []
+        monkeypatch.setattr(signal, "getsignal", lambda _sig: lambda s, _f: server_calls.append(s))
+        monkeypatch.setattr(signal, "signal", installed.__setitem__)
+        closed: list[bool] = []
+        monkeypatch.setattr(main.sse_manager, "close_all", lambda: closed.append(True))
+
+        main._end_streams_on_exit()
+        installed[signal.SIGTERM](signal.SIGTERM, None)
+        await asyncio.sleep(0)
+
+        assert server_calls == [signal.SIGTERM]
+        assert closed == [True]
+
+    async def test_leaves_non_callable_handlers_alone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        installed: list[int] = []
+        monkeypatch.setattr(signal, "getsignal", lambda _sig: signal.SIG_DFL)
+        monkeypatch.setattr(signal, "signal", lambda sig, _h: installed.append(sig))
+
+        main._end_streams_on_exit()
+        assert installed == []

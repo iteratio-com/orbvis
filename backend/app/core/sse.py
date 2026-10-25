@@ -30,7 +30,8 @@ class Subscriber:
     auth_user: str | None
     folder_scope: FolderScope | None = None
     group_key: str | None = None
-    queue: asyncio.Queue[str] = field(default_factory=lambda: asyncio.Queue(maxsize=64))
+    # ``None`` tells the stream to end (server shutdown).
+    queue: asyncio.Queue[str | None] = field(default_factory=lambda: asyncio.Queue(maxsize=64))
 
 
 class SubscriptionManager:
@@ -85,17 +86,34 @@ class SubscriptionManager:
         the oldest pending payload than block the broadcast loop.
         """
         for sub in targets:
-            try:
-                sub.queue.put_nowait(message)
-            except asyncio.QueueFull:
-                try:
-                    sub.queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-                try:
-                    sub.queue.put_nowait(message)
-                except asyncio.QueueFull:
-                    logger.warning("SSE queue still full after drop for board=%s", board)
+            if not _offer(sub, message):
+                logger.warning("SSE queue still full after drop for board=%s", board)
+
+    def close_all(self) -> None:
+        """End every open stream.
+
+        uvicorn runs the lifespan shutdown only once all connections have closed,
+        and an SSE stream never closes on its own, so shutdown would otherwise
+        wait for --timeout-graceful-shutdown (or forever without it).
+        """
+        for subs in self._subscribers.values():
+            for sub in subs:
+                _offer(sub, None)
+
+
+def _offer(sub: Subscriber, item: str | None) -> bool:
+    try:
+        sub.queue.put_nowait(item)
+    except asyncio.QueueFull:
+        try:
+            sub.queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        try:
+            sub.queue.put_nowait(item)
+        except asyncio.QueueFull:
+            return False
+    return True
 
 
 manager = SubscriptionManager()

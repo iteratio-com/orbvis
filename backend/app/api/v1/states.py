@@ -602,6 +602,8 @@ async def sse_board_states(
                 break
             try:
                 msg = await asyncio.wait_for(sub.queue.get(), timeout=_SSE_KEEPALIVE_INTERVAL)
+                if msg is None:
+                    break
                 yield f"data: {msg}\n\n".encode()
             except TimeoutError:
                 yield b": keepalive\n\n"
