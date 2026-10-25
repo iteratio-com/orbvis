@@ -485,7 +485,7 @@
                   <CmkLabel
                     :help="
                       _t(
-                        'Available: {{name}}, {{state}}, {{output}}, {{host}}, {{service}}, {{address}}, {{state_type}}, {{attempts}}, {{last_check}}, {{state_duration}}, {{acknowledged}}, {{in_downtime}}, {{stale}}'
+                        'Available: {{name}}, {{state}}, {{output}}, {{host}}, {{service}}, {{address}}, {{state_type}}, {{attempts}}, {{last_check}}, {{state_duration}}, {{acknowledged}}, {{in_downtime}}, {{stale}}, {{labels}}, {{label:KEY}}'
                       )
                     "
                     >{{ _t('Hover template') }}</CmkLabel
@@ -500,7 +500,7 @@
                   <CmkLabel
                     :help="
                       _t(
-                        'Available: {{name}}, {{state}}, {{output}}, {{host}}, {{service}}, {{address}}, {{state_type}}, {{attempts}}, {{last_check}}, {{state_duration}}, {{acknowledged}}, {{in_downtime}}, {{stale}}'
+                        'Available: {{name}}, {{state}}, {{output}}, {{host}}, {{service}}, {{address}}, {{state_type}}, {{attempts}}, {{last_check}}, {{state_duration}}, {{acknowledged}}, {{in_downtime}}, {{stale}}, {{labels}}, {{label:KEY}}'
                       )
                     "
                     >{{ _t('Context template') }}</CmkLabel

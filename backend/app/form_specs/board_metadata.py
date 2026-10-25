@@ -52,7 +52,8 @@ _TEMPLATES = OrbDictGroup(
     title=Title("Templates"),
     help_text=Help(
         "Per-board overrides for the global hover / context-menu fallback. "
-        "Placeholders: {{name}}, {{state}}, {{output}}, {{host}}, {{service}}."
+        "Placeholders: {{name}}, {{state}}, {{output}}, {{host}}, {{service}}, "
+        "{{label:KEY}}."
     ),
     key="templates",
 )
@@ -233,7 +234,7 @@ def board_metadata_spec(
                         "(Settings → Object defaults). When enabled, overrides "
                         "the global default for this board only. "
                         "Placeholders: {{name}}, {{state}}, {{output}}, "
-                        "{{host}}, {{service}}. "
+                        "{{host}}, {{service}}, {{label:KEY}}. "
                         "Example: '{{name}}: {{state}}' renders as 'db-prod-01: CRIT'."
                     ),
                     prefill=InputHint("e.g. {{name}} is {{state}}"),

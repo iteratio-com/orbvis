@@ -6,6 +6,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Features
+
+- **Checkmk labels in templates**: hover and context templates take `{{label:KEY}}` for a single Checkmk host/service label and `{{labels}}` for all of them, so a board can show operational names (rack position, SSB designation, owner) that only live in labels. Service objects see their host's labels too; on a key both define, the service label wins. Label values are HTML-escaped like other monitoring values. Labels now ship with the object state instead of only with the on-demand detail drawer, except in the all-hosts / all-services queries behind radar boards
+
 ### Security
 
 - Hover and context templates HTML-escape every value taken from the monitoring state (plugin output, alias, address, perf data, …), as Checkmk does by default. Previously a monitored device could inject tags the template sanitizer allows, such as images or links, through its plugin output. The template's own markup and values from the board configuration ({{name}}, {{host}}, {{service}}, {{group}}) still render as before. HTML in plugin output is no longer rendered in templates, even where the Checkmk rule *Escape HTML in service output* is disabled

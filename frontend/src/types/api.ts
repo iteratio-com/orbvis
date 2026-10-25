@@ -522,6 +522,7 @@ export interface ObjectState {
   current_attempt?: number
   max_attempts?: number
   last_state_change?: number | null
+  labels?: Record<string, string>
   tree?: AggregationNode | null
   services_summary?: ServicesSummary | null
   hosts_summary?: ServicesSummary | null

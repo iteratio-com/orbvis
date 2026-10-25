@@ -42,6 +42,9 @@ class ObjectState(BaseModel):
     current_attempt: int = 0
     max_attempts: int = 0
     last_state_change: float | None = None
+    # Checkmk labels of the host/service, so hover and context templates can
+    # render them via {{label:KEY}} without an extra object-details roundtrip.
+    labels: dict[str, str] = {}
     # Set in distributed Checkmk setups to identify the originating site.
     site_id: str | None = None
     # Populated only for type=='aggregation' when the BoardObject has expand_depth > 0.

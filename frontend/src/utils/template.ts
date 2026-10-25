@@ -33,6 +33,8 @@ import { escapeHtml } from '@/vendor/cmk/lib/utils'
  *   {{metric}}           – value of first perf metric (or named one via {{metric:label}})
  *   {{metric_unit}}      – unit of first perf metric
  *   {{metric:LABEL}}     – value of the perf metric named LABEL
+ *   {{labels}}           – all Checkmk labels as 'key: value' pairs, comma separated
+ *   {{label:KEY}}        – value of the Checkmk label KEY (service labels win over host labels)
  */
 export function interpolateTemplate(
   template: string,
@@ -97,7 +99,8 @@ function interpolate(
     services_summary: formatServicesSummary(state?.services_summary),
     perf_data: perfRaw,
     metric: firstMetric ? String(firstMetric.value) + firstMetric.unit : '',
-    metric_unit: firstMetric?.unit ?? ''
+    metric_unit: firstMetric?.unit ?? '',
+    labels: formatLabels(state?.labels)
   }
 
   function namedMetric(label: string): string {
@@ -105,13 +108,22 @@ function interpolate(
     return m ? String(m.value) + m.unit : ''
   }
 
-  return template.replace(/\{\{(\w+(?::\w+)?)\}\}/g, (_, key: string) => {
+  function namedLabel(key: string): string {
+    const labels = state?.labels
+    return labels && Object.hasOwn(labels, key) ? (labels[key] ?? '') : ''
+  }
+
+  // Label keys are free-form in Checkmk ('cmk/site', 'SSB-Raum', ...), so the
+  // argument of a prefixed macro accepts everything but braces and whitespace.
+  return template.replace(/\{\{(\w+(?::[^{}\s]+)?)\}\}/g, (_, key: string) => {
     if (Object.hasOwn(boardVars, key)) return boardVars[key] ?? ''
     const value = key.startsWith('metric:')
       ? namedMetric(key.slice(7))
-      : Object.hasOwn(stateVars, key)
-        ? (stateVars[key] ?? '')
-        : ''
+      : key.startsWith('label:')
+        ? namedLabel(key.slice(6))
+        : Object.hasOwn(stateVars, key)
+          ? (stateVars[key] ?? '')
+          : ''
     return encodeStateValue(value)
   })
 }
@@ -140,4 +152,24 @@ export function formatServicesSummary(
   if (summary.pending) parts.push(`${summary.pending} PEND`)
   if (summary.ok) parts.push(`${summary.ok} OK`)
   return parts.join(' · ')
+}
+
+/**
+ * All Checkmk labels of an object as a single readable string
+ * (e.g. "cmk/site: prod, SSB: 12-4"). Keys are sorted case-insensitively so
+ * the output is stable between refreshes and reads alphabetically.
+ */
+export function formatLabels(labels: ObjectState['labels'] | undefined): string {
+  if (!labels) return ''
+  return Object.keys(labels)
+    .sort(compareLabelKeys)
+    .map((key) => `${key}: ${labels[key]}`)
+    .join(', ')
+}
+
+function compareLabelKeys(a: string, b: string): number {
+  const la = a.toLowerCase()
+  const lb = b.toLowerCase()
+  if (la !== lb) return la < lb ? -1 : 1
+  return a < b ? -1 : a > b ? 1 : 0
 }
