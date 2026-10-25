@@ -484,3 +484,37 @@ def test_custom_validate_number_in_range_on_integer() -> None:
     assert validate_form_data(spec, {"port": 6557}) == []
     errors = validate_form_data(spec, {"port": 0})
     assert any(e.location == ["port"] for e in errors)
+
+
+# ── Global settings: label template ────────────────────────────────────
+
+
+def test_global_label_template_sits_outside_the_labels_cascade() -> None:
+    """The template applies even while labels are hidden, so it must stay editable."""
+    from app.form_specs.global_settings import global_settings_spec
+
+    json_spec = serialize_form_spec(global_settings_spec())
+    elements = {el["name"]: el for el in json_spec["elements"]}
+    assert elements["label_template"]["required"] is False
+    assert elements["label_template"]["group"] == elements["label_show_override"]["group"]
+    labels = elements["labels"]["parameter_form"]
+    shown = next(el for el in labels["elements"] if el["name"] == "shown")
+    assert "template" not in {el["name"] for el in shown["parameter_form"]["elements"]}
+
+
+def test_global_settings_form_keeps_label_template_while_labels_hidden() -> None:
+    from app.api.v1.settings import _from_form, _to_form
+    from app.schemas.settings import GlobalSettings
+
+    current = GlobalSettings(label_show=False, label_template="{{name}} — {{label:SSB}}")
+    form = _to_form(current)
+    assert form["labels"] == ["hidden", None]
+    assert form["label_template"] == "{{name}} — {{label:SSB}}"
+
+    form["label_template"] = "{{label:rack}}"
+    saved = _from_form(form, current)
+    assert saved.label_show is False
+    assert saved.label_template == "{{label:rack}}"
+
+    form.pop("label_template")
+    assert _from_form(form, current).label_template is None
