@@ -93,14 +93,26 @@ _SAFE_DATA_URI_PREFIXES = (
 _SVG_LOCAL_HREF_ONLY_TAGS = frozenset({"use", "image", "feimage"})
 
 # CSS in a <style> block or style attribute can pull external resources via
-# @import or url(...), leaking the viewer's IP and enabling CSS exfiltration.
-# Local url(#gradient) / url(data:...) paints stay allowed.
-_CSS_EXTERNAL_REF = re.compile(r"@import|url\(\s*['\"]?\s*(?:https?:|//|file:)", re.IGNORECASE)
+# @import, url(...) or the functions that take a plain string URL
+# (image-set("…" 1x), image(), cross-fade(), src()), leaking the viewer's IP and
+# enabling CSS exfiltration. Local url(#gradient) / url(data:...) paints stay
+# allowed.
+_CSS_EXTERNAL_REF = re.compile(
+    r"@import"
+    r"|url\(\s*['\"]?\s*(?:https?:|//|file:)"
+    r"|(?:image-set|image|cross-fade|src)\([^{}]*?['\"]\s*(?:https?:|//|file:)",
+    re.IGNORECASE,
+)
 # The browser decodes escapes and drops comments before it tokenises CSS, so
 # ``@\69mport`` or ``url(\68ttps://…)`` would slip past the raw-text match.
 _CSS_COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.DOTALL)
-_CSS_HEX_ESCAPE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?")
-_CSS_CHAR_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+# One left-to-right pass like the CSS tokenizer: in ``\\\\e`` the backslashes
+# pair up, so a hex-first pass would misread the last ``\e`` as an escape.
+_CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|(.))", re.DOTALL)
+# What survives the decoding still goes through the browser's URL parser, which
+# drops tabs and newlines and reads a backslash as a slash: ``ht<TAB>tps:`` is
+# ``https:`` and ``\\evil.example`` is ``//evil.example``.
+_URL_DROPPED_CHARS = re.compile(r"[\t\n\r]")
 
 # ElementTree drops processing instructions, so the element walk never sees a
 # ``<?xml-stylesheet ...?>`` — yet the stored bytes keep it, and a browser opening
@@ -123,12 +135,16 @@ def _href_is_safe(value: str, *, local_only: bool) -> bool:
     return True
 
 
-def _css_has_external_ref(css: str) -> bool:
-    def _hex(m: re.Match[str]) -> str:
-        cp = int(m.group(1), 16)
-        return chr(cp) if 0 < cp <= 0x10FFFF and not 0xD800 <= cp <= 0xDFFF else "\ufffd"
+def _decode_css_escape(m: re.Match[str]) -> str:
+    if m.group(1) is None:
+        return m.group(2)
+    cp = int(m.group(1), 16)
+    return chr(cp) if 0 < cp <= 0x10FFFF and not 0xD800 <= cp <= 0xDFFF else "\ufffd"
 
-    decoded = _CSS_CHAR_ESCAPE.sub(r"\1", _CSS_HEX_ESCAPE.sub(_hex, css))
+
+def _css_has_external_ref(css: str) -> bool:
+    decoded = _CSS_ESCAPE.sub(_decode_css_escape, css)
+    decoded = _URL_DROPPED_CHARS.sub("", decoded).replace("\\", "/")
     # Both variants: stripping a "/*" that sits inside a string would otherwise
     # hide a real reference after it.
     return any(_CSS_EXTERNAL_REF.search(v) for v in (decoded, _CSS_COMMENT.sub("", decoded)))

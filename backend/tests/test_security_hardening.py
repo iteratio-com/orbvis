@@ -305,6 +305,39 @@ class TestSvgSafety:
             ),
             pytest.param(
                 b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>rect{fill:image-set("https://evil.example/t.png" 1x)}</style></svg>',
+                id="style-image-set-string",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b"<rect style=\"background:-webkit-image-set('//evil.example/t.png' 1x)\"/></svg>",
+                id="style-attr-webkit-image-set",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>rect{fill:image-set("a.png" 1x, "https://evil.example/t.png" 2x)}</style>'
+                b"</svg>",
+                id="style-image-set-second-candidate",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                # Four backslashes in the CSS decode to two; the URL parser reads //.
+                b'<style>rect{fill:url("\\\\\\\\evil.example/p")}</style></svg>',
+                id="style-backslash-host",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>rect{fill:url("ht\\9tps://evil.example/p")}</style></svg>',
+                id="style-escaped-tab-in-scheme",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b'<style>rect{fill:image-set("a;b" 1x, "https://evil.example/t.png" 2x)}</style>'
+                b"</svg>",
+                id="style-image-set-semicolon-in-string",
+            ),
+            pytest.param(
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
                 b'<rect filter="url(//evil.example/f.svg#f)"/></svg>',
                 id="remote-filter",
             ),
