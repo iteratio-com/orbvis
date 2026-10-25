@@ -14,8 +14,17 @@ from app.connections.base import MetricHistoryResult
 from app.connections.livestatus import LivestatusConnection
 from app.core.image_security import is_safe_svg, is_valid_image
 from app.models.user import User
-from app.schemas.board import BoardObject, BoardObjectUpdate, normalize_object_filter
+from app.schemas.board import (
+    BoardConfig,
+    BoardCreate,
+    BoardObject,
+    BoardObjectUpdate,
+    BoardUpdate,
+    DisplayConfig,
+    normalize_object_filter,
+)
 from app.schemas.connection import REDACTED_SECRET, ConnectionConfig, _redact
+from app.services.board_service import _sanitize_legacy_data
 
 
 class TestBackendUrlValidation:
@@ -127,6 +136,52 @@ class TestBoardObjectUrlValidation:
     )
     def test_accepts_safe_urls(self, field: str, url: str) -> None:
         BoardObject(id="o1", type="image", **{field: url})
+
+
+_UNSAFE_ASSET_REFS = [
+    "../../check_mk/logout.py",
+    "sub/icon.png",
+    "..\\icon.png",
+    "https://evil.example/x.png",
+    "javascript:alert(1)",
+    "icon\n.png",
+]
+
+
+class TestAssetRefValidation:
+    """Icon/background references stay bare filenames inside their asset directory."""
+
+    @pytest.mark.parametrize("ref", _UNSAFE_ASSET_REFS)
+    def test_rejects_unsafe_refs_on_save(self, ref: str) -> None:
+        with pytest.raises(ValidationError):
+            BoardObject(id="o1", type="image", image_src=ref)
+        with pytest.raises(ValidationError):
+            BoardObjectUpdate(image_src=ref)
+        with pytest.raises(ValidationError):
+            DisplayConfig(image=ref)
+        with pytest.raises(ValidationError):
+            BoardCreate(name="b1", background_image=ref)
+        with pytest.raises(ValidationError):
+            BoardUpdate(background_image=ref)
+
+    @pytest.mark.parametrize("ref", ["server.svg", "std_medium.png", "my map (1).PNG", None, ""])
+    def test_accepts_plain_filenames(self, ref: str | None) -> None:
+        BoardObject(id="o1", type="image", image_src=ref, display={"image": ref})
+        BoardCreate(name="b1", background_image=ref)
+
+    @pytest.mark.parametrize("ref", _UNSAFE_ASSET_REFS)
+    def test_stored_board_still_loads_without_the_ref(self, ref: str) -> None:
+        data: dict[str, object] = {
+            "name": "b1",
+            "background_image": ref,
+            "objects": [{"id": "o1", "type": "image", "image_src": ref, "display": {"image": ref}}],
+        }
+        _sanitize_legacy_data(data)
+        cfg = BoardConfig.model_validate(data)
+        assert cfg.background_image is None
+        assert cfg.objects[0].image_src is None
+        assert cfg.objects[0].display is not None
+        assert cfg.objects[0].display.image is None
 
 
 class TestSvgSafety:

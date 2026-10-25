@@ -30,6 +30,7 @@ import type {
   ObjectState,
   WorldmapView
 } from '@/types/api'
+import { imageAssetUrl } from '@/utils/assetUrl'
 import { type GroupMember, applyGroupDelta, collectGroupMembers } from '@/utils/groupDrag'
 import { getBoardObjectName } from '@/utils/naming'
 import {
@@ -251,7 +252,7 @@ function makeDivIcon(obj: BoardObjectType): L.DivIcon {
       ">${escapedName}</div>`
   } else if (iconFile) {
     const outline = selected ? 'filter: drop-shadow(0 0 6px #4ade80);' : ''
-    iconHtml = `<img src="${import.meta.env.BASE_URL}images/${iconFile}" style="width:${size}px;height:${size}px;object-fit:contain;display:block;${outline}" />`
+    iconHtml = `<img src="${imageAssetUrl(iconFile)}" style="width:${size}px;height:${size}px;object-fit:contain;display:block;${outline}" />`
   } else {
     iconHtml = `<div style="
         width: ${size}px; height: ${size}px;

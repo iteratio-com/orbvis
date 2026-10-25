@@ -49,3 +49,31 @@ def coerce_user_url(value: object) -> object:
         return validate_user_url(value)
     except ValueError:
         return None
+
+
+# Icon and background references are uploaded filenames the frontend expands
+# into an images/ or boards/backgrounds/ asset URL. A separator, ``..`` or a
+# scheme would let the reference climb out of the asset directory and turn a
+# viewer's page load into a same-origin GET (e.g. ``../../check_mk/logout.py``).
+_ASSET_REF_UNSAFE = re.compile(r"[/\\:\x00-\x1f\x7f]|\.\.")
+
+
+def validate_asset_ref(value: str | None) -> str | None:
+    """Accept a bare asset filename; reject anything that could leave its directory."""
+    if not value:
+        return value
+    if len(value) > 255 or _ASSET_REF_UNSAFE.search(value):
+        raise ValueError("Image reference must be a plain filename")
+    return value
+
+
+def coerce_asset_ref(value: object) -> object:
+    """Read-side companion to ``validate_asset_ref``: drop an unsafe stored reference."""
+    if value is None or value == "":
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return validate_asset_ref(value)
+    except ValueError:
+        return None

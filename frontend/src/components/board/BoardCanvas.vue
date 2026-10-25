@@ -190,6 +190,7 @@ import { useObjectHoverMenu } from '@/composables/useObjectHoverMenu'
 import { useBoardsStore } from '@/stores/boards'
 import { useSettingsStore } from '@/stores/settings'
 import type { BoardConfig, BoardObject as BoardObjectType, ObjectState } from '@/types/api'
+import { backgroundAssetUrl } from '@/utils/assetUrl'
 import { GADGET_DEFAULT_SIZE } from '@/utils/gadget'
 import { type GroupMember, applyGroupDelta, collectGroupMembers } from '@/utils/groupDrag'
 import {
@@ -331,7 +332,7 @@ const bgImageUrl = computed(() => {
   // that hasn't been uploaded yet — use it verbatim instead of resolving it
   // as a server-side filename.
   if (/^(blob:|data:|https?:)/.test(bg)) return bg
-  return `${import.meta.env.BASE_URL}boards/backgrounds/${bg}?v=${bgImageCacheKey.value}`
+  return `${backgroundAssetUrl(bg)}?v=${bgImageCacheKey.value}`
 })
 
 watch(

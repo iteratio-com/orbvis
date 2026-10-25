@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 
 from app.core.config import settings
-from app.schemas._validators import coerce_user_url
+from app.schemas._validators import coerce_asset_ref, coerce_user_url
 from app.schemas.board import (
     BoardConfig,
     BoardCreate,
@@ -306,6 +306,13 @@ def _sanitize_legacy_data(data: object) -> None:
         for key in ("url", "hover_url", "graph_url"):
             if key in obj:
                 obj[key] = coerce_user_url(obj[key])
+        if "image_src" in obj:
+            obj["image_src"] = coerce_asset_ref(obj["image_src"])
+        display = obj.get("display")
+        if isinstance(display, dict) and "image" in display:
+            display["image"] = coerce_asset_ref(display["image"])
+    if "background_image" in data:
+        data["background_image"] = coerce_asset_ref(data["background_image"])
     view = data.get("view")
     if isinstance(view, dict):
         for key in ("background_image", "tile_url"):

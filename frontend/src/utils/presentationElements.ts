@@ -5,6 +5,7 @@ import type {
   ShapeElement,
   TextElement
 } from '@/types/api'
+import { imageAssetUrl } from '@/utils/assetUrl'
 
 export type InsertKind = 'rect' | 'ellipse' | 'line' | 'arrow' | 'text' | 'image' | 'data'
 
@@ -17,7 +18,7 @@ const IMAGE_URL_RE = /^(https?:|data:|blob:|\/)/
 export function resolveImageRef(ref: string | null | undefined): string {
   if (!ref) return ''
   if (IMAGE_URL_RE.test(ref)) return ref
-  return `${import.meta.env.BASE_URL}images/${ref}`
+  return imageAssetUrl(ref)
 }
 
 // Given a stored ``src``/``background_image``, return the image-store filename it

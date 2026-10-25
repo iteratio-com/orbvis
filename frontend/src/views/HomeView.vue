@@ -193,7 +193,7 @@
                 v-if="
                   map.background_image && !map.name.startsWith('demo-') && !bgImageFailed[map.name]
                 "
-                :src="`${baseUrl}boards/backgrounds/${map.background_image}`"
+                :src="backgroundAssetUrl(map.background_image)"
                 :alt="map.alias || map.name"
                 class="orb-home__thumb-img"
                 draggable="false"
@@ -1243,10 +1243,10 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useSettingsStore } from '@/stores/settings'
 import type { BoardRead, WorldmapView } from '@/types/api'
 import type { TourStep } from '@/types/tour'
+import { backgroundAssetUrl } from '@/utils/assetUrl'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
 const { _t, _tn } = usei18n()
-const baseUrl = import.meta.env.BASE_URL
 // Boards whose background image 404s (e.g. an imported map_image that was never
 // uploaded) fall back to the board-type thumbnail.
 const bgImageFailed = reactive<Record<string, boolean>>({})

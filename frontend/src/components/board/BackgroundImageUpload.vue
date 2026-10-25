@@ -69,6 +69,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import { backgroundAssetUrl } from '@/utils/assetUrl'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
 const ACCEPT_TYPES = 'image/png,image/jpeg,image/svg+xml,image/webp,image/gif'
@@ -91,7 +92,6 @@ const emit = defineEmits<{
   'update:pendingRemove': [value: boolean]
 }>()
 
-const BASE_URL = import.meta.env.BASE_URL
 const cacheBust = ref(Date.now())
 const previewFailed = ref(false)
 
@@ -115,7 +115,7 @@ const hasImage = computed(() =>
 const displayUrl = computed(() =>
   props.pendingFile
     ? (props.pendingPreviewUrl ?? '')
-    : `${BASE_URL}boards/backgrounds/${props.modelValue}?v=${cacheBust.value}`
+    : `${backgroundAssetUrl(props.modelValue)}?v=${cacheBust.value}`
 )
 const displayName = computed(() => props.pendingFile?.name ?? props.modelValue)
 

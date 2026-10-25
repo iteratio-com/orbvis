@@ -275,7 +275,7 @@
            an HTML5 drag operation which would swallow all subsequent mousemove events -->
       <img
         v-if="(object.display?.image ?? object.image_src) && !imgLoadFailed"
-        :src="`${BASE_URL}images/${object.display?.image ?? object.image_src}`"
+        :src="imageAssetUrl(object.display?.image ?? object.image_src ?? '')"
         :style="customIconStyle"
         draggable="false"
         class="orb-obj__icon-img"
@@ -483,6 +483,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { MetricPoint } from '@/stores/states'
 import { useStatesStore } from '@/stores/states'
 import type { BoardObject, ObjectState } from '@/types/api'
+import { imageAssetUrl } from '@/utils/assetUrl'
 import { renderMetricValue } from '@/utils/metricFormat'
 import { utilColor as _utilColor, getMetric, parsePerfData, utilPercent } from '@/utils/perf'
 import usei18n from '@/vendor/cmk/lib/i18n'
@@ -491,7 +492,6 @@ import AggregationSubtree from './AggregationSubtree.vue'
 import GadgetRenderer from './GadgetRenderer.vue'
 import MetricChart from './MetricChart.vue'
 
-const BASE_URL = import.meta.env.BASE_URL
 const RING_PAD = 6
 
 const { _t } = usei18n()

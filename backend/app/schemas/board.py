@@ -5,10 +5,12 @@ from __future__ import annotations
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
-from app.schemas._validators import validate_user_url
+from app.schemas._validators import validate_asset_ref, validate_user_url
 from app.schemas.presentation import PresentationView
+
+_BackgroundRef = Annotated[str | None, AfterValidator(validate_asset_ref)]
 
 
 def _accept_legacy_backend_id(data: object) -> object:
@@ -176,6 +178,11 @@ class DisplayConfig(BaseModel):
     image_size: int | None = None
     gadget_type: Literal["gauge", "bar", "trafficlight", "value"] | None = None
     gadget_metric: str | None = None
+
+    @field_validator("image")
+    @classmethod
+    def _validate_image(cls, v: str | None) -> str | None:
+        return validate_asset_ref(v)
 
 
 class StaticView(BaseModel):
@@ -380,6 +387,11 @@ class BoardObject(BaseModel):
     def _validate_urls(cls, v: str | None) -> str | None:
         return validate_user_url(v)
 
+    @field_validator("image_src")
+    @classmethod
+    def _validate_image_src(cls, v: str | None) -> str | None:
+        return validate_asset_ref(v)
+
     @field_validator("line_color", "line_color_border")
     @classmethod
     def _validate_line_colors(cls, v: str | None) -> str | None:
@@ -420,7 +432,7 @@ class BoardConfig(BaseModel):
     click_action: ClickAction = "link"
     hover_template: str | None = None
     context_template: str | None = None
-    background_image: str | None = None
+    background_image: _BackgroundRef = None
     background_color: str | None = None
     # Default keeps existing boards on the OrbVis renderer; "nagvis_classic"
     # opts an imported board into top-left anchoring + flat styling.
@@ -447,7 +459,7 @@ class BoardCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_\-]+$")
     alias: str = ""
-    background_image: str | None = None
+    background_image: _BackgroundRef = None
     background_color: str | None = None
     icon_size: int | None = None
     connection_id: str = "live_1"
@@ -460,7 +472,7 @@ class BoardUpdate(BaseModel):
     _migrate_legacy_keys = model_validator(mode="before")(_accept_legacy_backend_id)
 
     alias: str | None = None
-    background_image: str | None = None
+    background_image: _BackgroundRef = None
     background_color: str | None = None
     icon_size: int | None = None
     connection_id: str | None = None
@@ -579,6 +591,11 @@ class BoardObjectUpdate(BaseModel):
     @classmethod
     def _validate_urls(cls, v: str | None) -> str | None:
         return validate_user_url(v)
+
+    @field_validator("image_src")
+    @classmethod
+    def _validate_image_src(cls, v: str | None) -> str | None:
+        return validate_asset_ref(v)
 
     @field_validator("line_color", "line_color_border")
     @classmethod

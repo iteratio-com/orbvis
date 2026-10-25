@@ -3,7 +3,7 @@
     <!-- Selected image preview + clear -->
     <div v-if="modelValue" class="orb-imgpick__selected">
       <img
-        :src="`${BASE_URL}images/${modelValue}`"
+        :src="imageAssetUrl(modelValue)"
         class="orb-imgpick__thumb"
         :class="selectedIsBuiltinSvg ? 'svg-icon' : ''"
       />
@@ -248,6 +248,7 @@ import { computed, ref, watch } from 'vue'
 import { imagesApi } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import type { ImageEntry } from '@/types/api'
+import { imageAssetUrl } from '@/utils/assetUrl'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
 const BASE_URL = import.meta.env.BASE_URL
