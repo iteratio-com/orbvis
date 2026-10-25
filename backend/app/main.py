@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.middleware import (
     CSRFOriginMiddleware,
     MethodOverrideMiddleware,
+    RequestBodyLimitMiddleware,
     SecurityHeadersMiddleware,
 )
 from app.core.version import APP_VERSION
@@ -302,6 +303,9 @@ async def custom_swagger_ui_html() -> HTMLResponse:
     )
 
 
+# The largest legitimate body is a 10 MB background upload plus multipart framing.
+MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -318,6 +322,7 @@ app.add_middleware(
 )
 app.add_middleware(MethodOverrideMiddleware)
 app.add_middleware(CSRFOriginMiddleware, allowed_origins=settings.allowed_origins)
+app.add_middleware(RequestBodyLimitMiddleware, max_body_size=MAX_REQUEST_BODY_BYTES)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 

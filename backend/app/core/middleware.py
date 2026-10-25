@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from urllib.parse import urlsplit
 
+from fastapi import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
@@ -44,6 +45,58 @@ def is_same_origin(origin: str, raw_headers: Iterable[tuple[bytes, bytes]]) -> b
     if fwd and _host_only(fwd) == origin_host:
         return True
     return bool(host) and _host_only(host) == origin_host
+
+
+class RequestBodyLimitMiddleware:
+    """Refuse request bodies above ``max_body_size`` with 413.
+
+    The upload routes check their size only after Starlette has spooled the
+    whole multipart body, and JSON bodies had no bound at all, so any caller
+    could make the worker buffer arbitrarily large bodies. Counts what is
+    actually received, so a chunked body without Content-Length is bounded too.
+    """
+
+    def __init__(self, app: ASGIApp, max_body_size: int) -> None:
+        self.app = app
+        self._max = max_body_size
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                if value.isdigit() and int(value) > self._max:
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 413,
+                            "headers": [(b"content-type", b"application/json")],
+                        }
+                    )
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": b'{"detail":"Request body too large"}',
+                        }
+                    )
+                    return
+                break
+
+        received = 0
+
+        async def limited_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self._max:
+                    # FastAPI re-raises an HTTPException from body parsing as is,
+                    # so this surfaces as a 413 instead of a generic 400.
+                    raise HTTPException(status_code=413, detail="Request body too large")
+            return message
+
+        await self.app(scope, limited_receive, send)
 
 
 class SecurityHeadersMiddleware:

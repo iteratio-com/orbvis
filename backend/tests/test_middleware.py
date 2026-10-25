@@ -8,11 +8,13 @@ to provoke through the HTTP layer.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 import pytest
+from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.testclient import TestClient
 
-from app.core.middleware import _host_only, is_same_origin
+from app.core.middleware import RequestBodyLimitMiddleware, _host_only, is_same_origin
 
 
 def _headers(**named: str) -> Iterable[tuple[bytes, bytes]]:
@@ -88,3 +90,41 @@ class TestIsSameOrigin:
 
     def test_case_insensitive_host_match(self) -> None:
         assert is_same_origin("https://Example.COM", _headers(host="example.com"))
+
+
+class TestRequestBodyLimit:
+    @staticmethod
+    def _client(limit: int) -> TestClient:
+        app = FastAPI()
+
+        @app.post("/echo")
+        async def echo(request: Request) -> dict[str, int]:
+            return {"size": len(await request.body())}
+
+        @app.post("/form")
+        async def form(file: UploadFile = File(...)) -> dict[str, int]:
+            return {"size": len(await file.read())}
+
+        app.add_middleware(RequestBodyLimitMiddleware, max_body_size=limit)
+        return TestClient(app)
+
+    def test_body_within_limit_passes(self) -> None:
+        resp = self._client(100).post("/echo", content=b"x" * 100)
+        assert resp.status_code == 200
+        assert resp.json() == {"size": 100}
+
+    def test_declared_length_over_limit_is_refused(self) -> None:
+        resp = self._client(100).post("/echo", content=b"x" * 101)
+        assert resp.status_code == 413
+
+    def test_chunked_body_over_limit_is_refused(self) -> None:
+        def chunks() -> Iterator[bytes]:
+            for _ in range(5):
+                yield b"x" * 40
+
+        resp = self._client(100).post("/echo", content=chunks())
+        assert resp.status_code == 413
+
+    def test_multipart_upload_over_limit_is_refused(self) -> None:
+        resp = self._client(1000).post("/form", files={"file": ("a.png", b"x" * 2000)})
+        assert resp.status_code == 413
