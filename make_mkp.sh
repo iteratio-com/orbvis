@@ -2,13 +2,13 @@
 # make_mkp.sh – Build OrbVis as a Checkmk MKP package
 #
 # Usage:
-#   ./make_mkp.sh [--version 1.2.3] [--cmk-target 2.3|2.4|2.5|2.6] [--out /path/to/output]
+#   ./make_mkp.sh [--version 1.2.3] [--cmk-target 2.3|2.4|2.5|3.0] [--out /path/to/output]
 #
 # --cmk-target selects the CMK GUI-plugin set bundled in the MKP:
 #   2.3  – cmk_plugins_23/ (flat layout, CMK 2.3); default
 #   2.4  – cmk_plugins_23/ (flat layout, CMK 2.4)
 #   2.5  – cmk_plugins/    (namespace-package layout for CMK 2.5+)
-#   2.6  – cmk_plugins/    (namespace-package layout for CMK 2.6)
+#   3.0  – cmk_plugins/    (namespace-package layout for CMK 3.0)
 #
 # The default version is read from the VERSION file in the repo root; pass
 # --version to override.
@@ -53,11 +53,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$CMK_TARGET" in
-  2.3) MIN_REQUIRED="2.3.0"; PACKAGED="2.3.0p1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins_23" ;;
-  2.4) MIN_REQUIRED="2.4.0"; PACKAGED="2.4.0p1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins_23" ;;
-  2.5) MIN_REQUIRED="2.5.0"; PACKAGED="2.5.0p1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins" ;;
-  2.6) MIN_REQUIRED="2.6.0"; PACKAGED="2.6.0b1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins" ;;
-  *) die "Unsupported --cmk-target: $CMK_TARGET (allowed: 2.3, 2.4, 2.5, 2.6)" ;;
+  2.3) MIN_REQUIRED="2.3.0"; PACKAGED="2.3.0p1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins_23"
+       WHEELHOUSE_PYVER=3.12; BUNDLE_FILE=requirements-bundle-cmk23.txt ;;
+  2.4) MIN_REQUIRED="2.4.0"; PACKAGED="2.4.0p1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins_23"
+       WHEELHOUSE_PYVER=3.12; BUNDLE_FILE=requirements-bundle.txt ;;
+  2.5) MIN_REQUIRED="2.5.0"; PACKAGED="2.5.0p1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins"
+       WHEELHOUSE_PYVER=3.13; BUNDLE_FILE=requirements-bundle.txt ;;
+  3.0) MIN_REQUIRED="3.0.0"; PACKAGED="3.0.0b1";  PLUGIN_SRC="$SCRIPT_DIR/cmk_plugins"
+       WHEELHOUSE_PYVER=3.13; BUNDLE_FILE=requirements-bundle.txt ;;
+  *) die "Unsupported --cmk-target: $CMK_TARGET (allowed: 2.3, 2.4, 2.5, 3.0)" ;;
 esac
 
 [[ -d "$PLUGIN_SRC" ]] || die "Plugin source directory not found: $PLUGIN_SRC"
@@ -171,11 +175,6 @@ tar czf "$TMPDIR/lib/orbvis/server.tar.gz" \
 # for the target python/platform; the offline install then fails loudly with
 # a missing dep, which is the desired behaviour.
 step "Building wheelhouse"
-case "$CMK_TARGET" in
-  2.3) WHEELHOUSE_PYVER=3.12; BUNDLE_FILE=requirements-bundle-cmk23.txt ;;
-  2.4) WHEELHOUSE_PYVER=3.12; BUNDLE_FILE=requirements-bundle.txt ;;
-  2.5|2.6) WHEELHOUSE_PYVER=3.13; BUNDLE_FILE=requirements-bundle.txt ;;
-esac
 mkdir -p "$TMPDIR/lib/orbvis/wheels"
 python3 -m pip wheel --no-deps --wheel-dir "$TMPDIR/lib/orbvis/wheels" "$SCRIPT_DIR/backend" \
   > /dev/null

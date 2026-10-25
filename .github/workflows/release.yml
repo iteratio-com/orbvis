@@ -57,7 +57,7 @@ jobs:
       - name: Build MKP packages
         run: |
           pids=()
-          for target in 2.3 2.4 2.5 2.6; do
+          for target in 2.3 2.4 2.5 3.0; do
             ./make_mkp.sh --cmk-target "$target" --skip-frontend --out dist/ &
             pids+=($!)
           done

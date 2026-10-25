@@ -16,11 +16,11 @@ platforms are welcome.
 
 ### Requirements
 
-- Checkmk 2.3, 2.4, 2.5 or 2.6 — pick the matching MKP:
+- Checkmk 2.3, 2.4, 2.5 or 3.0 — pick the matching MKP:
   - `orbvis-cmk-2.3.mkp` (Checkmk 2.3)
   - `orbvis-cmk-2.4.mkp` (Checkmk 2.4)
   - `orbvis-cmk-2.5.mkp` (Checkmk 2.5)
-  - `orbvis-cmk-2.6.mkp` (Checkmk 2.6)
+  - `orbvis-cmk-3.0.mkp` (Checkmk 3.0)
 - A working OMD site (the default `APACHE_MODE=own` is required —
   `mkp enable` reloads the site Apache).
 - Python 3.12 available on the system. OrbVis creates its own venv under

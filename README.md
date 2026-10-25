@@ -42,7 +42,7 @@ Pre-built artefacts are on the [Releases](../../releases) page.
 
 ```bash
 omd su <site>
-mkp add ~/orbvis-cmk-2.5.mkp   # pick MKP for your CMK major (2.3–2.6)
+mkp add ~/orbvis-cmk-2.5.mkp   # pick MKP for your CMK major (2.3–3.0)
 mkp enable orbvis
 orbvis-setup
 ```
