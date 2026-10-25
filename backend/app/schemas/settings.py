@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
-from app.schemas._validators import coerce_user_url
+from app.schemas._validators import coerce_url_target, coerce_user_url
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -60,10 +60,9 @@ class GlobalSettings(BaseModel):
     view_type: str = "icon"
     # Older settings.json may store legacy frame targets like "_top"; coerce to
     # a value the FormSpec dropdown can render with its title.
-    url_target: Annotated[
-        str,
-        BeforeValidator(lambda v: v if v in {"_blank", "_self"} else "_blank"),
-    ] = "_blank"
+    url_target: Annotated[str, BeforeValidator(lambda v: coerce_url_target(v) or "_blank")] = (
+        "_blank"
+    )
     z: int = 1
     # ``None`` is a legacy state from before the FormSpec migration — coerce it
     # so the dropdown renders the factory default instead of an empty field.

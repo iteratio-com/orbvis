@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from typing import Annotated
+
+from pydantic import AfterValidator
 
 # Allowlist instead of a scheme blocklist: browsers strip ASCII control
 # characters when parsing URLs, so "java\tscript:alert(1)" bypasses any
@@ -52,21 +56,28 @@ def validate_user_url(value: str | None) -> str | None:
     return s
 
 
-def coerce_user_url(value: object) -> object:
-    """Sanitize now-invalid URLs to ``None`` so legacy boards still load.
+def _lenient(validate: Callable[[str | None], str | None]) -> Callable[[object], object]:
+    """Read-side companion of a strict validator: drop a now-invalid stored value.
 
-    Read-side companion to ``validate_user_url``, same contract as
-    ``_coerce_color``: stored JSON may pre-date the allowlist; dropping the
-    offending URL keeps the board loadable while API saves stay strict.
+    Same contract as ``_coerce_color``: stored JSON may pre-date the rule;
+    dropping the offending value keeps the board loadable while API saves stay
+    strict.
     """
-    if value is None or value == "":
-        return value
-    if not isinstance(value, str):
-        return None
-    try:
-        return validate_user_url(value)
-    except ValueError:
-        return None
+
+    def coerce(value: object) -> object:
+        if value is None or value == "":
+            return value
+        if not isinstance(value, str):
+            return None
+        try:
+            return validate(value)
+        except ValueError:
+            return None
+
+    return coerce
+
+
+coerce_user_url = _lenient(validate_user_url)
 
 
 # Icon and background references are uploaded filenames the frontend expands
@@ -85,13 +96,6 @@ def validate_asset_ref(value: str | None) -> str | None:
     return value
 
 
-def coerce_asset_ref(value: object) -> object:
-    """Read-side companion to ``validate_asset_ref``: drop an unsafe stored reference."""
-    if value is None or value == "":
-        return value
-    if not isinstance(value, str):
-        return None
-    try:
-        return validate_asset_ref(value)
-    except ValueError:
-        return None
+coerce_asset_ref = _lenient(validate_asset_ref)
+
+AssetRef = Annotated[str | None, AfterValidator(validate_asset_ref)]

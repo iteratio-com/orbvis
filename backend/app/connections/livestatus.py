@@ -1019,17 +1019,7 @@ class LivestatusConnection(ConnectionBase):
 
     async def get_service_perf_and_cmd(self, host: str, service: str) -> tuple[str, str]:
         """Return (perf_data, check_command) for a single service."""
-        query = (
-            f"GET services\n"
-            f"Columns: perf_data check_command\n"
-            f"Filter: host_name = {_ls_escape(host)}\n"
-            f"Filter: description = {_ls_escape(service)}\n"
-        )
-        rows = await self._query(query)
-        if not rows:
-            return "", ""
-        r = rows[0]
-        return _row_str(r, 0), _row_str(r, 1)
+        return await self._visible_perf_and_cmd(host, service) or ("", "")
 
     async def get_host_details(self, hostname: str) -> ObjectDetails | None:
         return await self._fetch_details("host", hostname, None)
@@ -1046,7 +1036,12 @@ class LivestatusConnection(ConnectionBase):
             cmk = await asyncio.to_thread(metric_titles, perf_data, check_command)
             names = [m.split("=", 1)[0].strip("'") for m in perf_data.split() if "=" in m]
             return {n: cmk.get(n) or _title_case(n) for n in names}
-        names = await self._get_perf_metric_names(host, None)
+        try:
+            visible = await self._visible_perf_and_cmd(host, None)
+        except Exception as exc:
+            logger.debug("Failed to get perf_data from Livestatus: %s", exc)
+            visible = None
+        names = _perf_metric_names(visible[0]) if visible else []
         return {n: _cmk_metric_title(n) for n in names}
 
     async def _fetch_details(
@@ -1695,26 +1690,6 @@ class LivestatusConnection(ConnectionBase):
         except Exception as exc:
             logger.warning("CMK REST API metric history failed: %s", exc)
         return MetricHistoryResult(series=series, titles=titles)
-
-    async def _get_perf_metric_names(self, host: str, service: str | None) -> list[str]:
-        """Get metric names from Livestatus perf_data for a host/service."""
-        if service:
-            query = (
-                f"GET services\n"
-                f"Columns: perf_data\n"
-                f"Filter: host_name = {_ls_escape(host)}\n"
-                f"Filter: description = {_ls_escape(service)}\n"
-            )
-        else:
-            query = f"GET hosts\nColumns: perf_data\nFilter: name = {_ls_escape(host)}\n"
-        try:
-            rows = await self._query(query)
-            if not rows or not rows[0]:
-                return []
-            return _perf_metric_names(str(rows[0][0]))
-        except Exception as exc:
-            logger.debug("Failed to get perf_data from Livestatus: %s", exc)
-            return []
 
     async def _get_cmk_metric_names(
         self,

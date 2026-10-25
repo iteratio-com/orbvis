@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
@@ -64,24 +65,12 @@ class RequestBodyLimitMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        for name, value in scope.get("headers", []):
-            if name == b"content-length":
-                if value.isdigit() and int(value) > self._max:
-                    await send(
-                        {
-                            "type": "http.response.start",
-                            "status": 413,
-                            "headers": [(b"content-type", b"application/json")],
-                        }
-                    )
-                    await send(
-                        {
-                            "type": "http.response.body",
-                            "body": b'{"detail":"Request body too large"}',
-                        }
-                    )
-                    return
-                break
+        length = next((v for k, v in scope.get("headers", []) if k == b"content-length"), b"")
+        if length.isdigit() and int(length) > self._max:
+            await JSONResponse({"detail": "Request body too large"}, status_code=413)(
+                scope, receive, send
+            )
+            return
 
         received = 0
 

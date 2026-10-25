@@ -91,12 +91,10 @@ class ConcurrencyLimiter:
     def release(self, key: str) -> None:
         """Give back one slot previously acquired for key (no-op at zero)."""
         with self._lock:
-            held = self._counts.get(key, 0)
-            if held <= 0:
+            held = self._counts.pop(key, 0)
+            if not held:
                 return
-            if held == 1:
-                del self._counts[key]
-            else:
+            if held > 1:
                 self._counts[key] = held - 1
             self._total -= 1
 
@@ -106,9 +104,8 @@ login_limiter = RateLimiter(max_calls=5, window_seconds=15 * 60)
 
 # 30 stream handshakes per minute per authenticated user — covers typical
 # reconnect storms (tab restore, laptop wake) but blocks scripted connection
-# floods. Keyed by user, not IP: behind the OMD double Apache every request
-# arrives from the loopback proxy hop, so an IP key would share one budget
-# across all users.
+# floods. Keyed by user, not IP, so users behind one NAT or office proxy don't
+# share a budget.
 ws_connect_limiter = RateLimiter(max_calls=30, window_seconds=60)
 
 sse_stream_limiter = ConcurrencyLimiter(

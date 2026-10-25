@@ -338,7 +338,7 @@ const bgImageUrl = computed(() => {
   // A live settings preview may patch in a blob:/data: URL for a background
   // that hasn't been uploaded yet — use it verbatim instead of resolving it
   // as a server-side filename.
-  if (/^(blob:|data:|https?:)/.test(bg)) return bg
+  if (/^(blob:|data:)/.test(bg)) return bg
   return `${backgroundAssetUrl(bg)}?v=${bgImageCacheKey.value}`
 })
 
