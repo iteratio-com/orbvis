@@ -439,6 +439,13 @@ class BoardConfig(BaseModel):
     click_action: ClickAction = "link"
     hover_template: str | None = None
     context_template: str | None = None
+    # Board-wide object-label control. ``label_show_override`` overrides the
+    # per-object switch for every object on the board (None = inherit the global
+    # override, then each object decides), ``label_template`` is the caption
+    # fallback for objects without their own label text, interpolated with the
+    # same placeholders as the templates above.
+    label_show_override: bool | None = None
+    label_template: str | None = None
     background_image: _BackgroundRef = None
     background_color: str | None = None
     # Default keeps existing boards on the OrbVis renderer; "nagvis_classic"
@@ -488,6 +495,8 @@ class BoardUpdate(BaseModel):
     click_action: ClickAction | None = None
     hover_template: str | None = None
     context_template: str | None = None
+    label_show_override: bool | None = None
+    label_template: str | None = None
     rotation_interval: int | None = None
     show_in_lists: bool | None = None
     render_mode: RenderMode | None = None
@@ -521,6 +530,8 @@ class BoardRead(BaseModel):
     show_in_lists: bool = True
     hover_template: str | None = None
     context_template: str | None = None
+    label_show_override: bool | None = None
+    label_template: str | None = None
     render_mode: RenderMode = "default"
     default_z: int = 1
     # Per-user capability stamped by the list endpoint: whether the requesting

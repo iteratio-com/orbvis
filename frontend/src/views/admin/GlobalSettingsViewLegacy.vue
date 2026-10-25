@@ -218,6 +218,31 @@
           </div>
           <CmkCollapsible :open="sectionOpen.labelDefaults">
             <div class="orb-gset__card-body">
+              <!-- Outside the dimmed block: 'Show label' only seeds new objects,
+                   the override applies to existing ones either way. -->
+              <div class="label-subsection">
+                <p class="orb-section-title">
+                  {{ _t('Visibility') }}
+                </p>
+                <label class="orb-gset__label">
+                  <span class="orb-gset__field-label">{{ _t('Object labels') }}</span>
+                  <CmkDropdown
+                    class="orb-gset__select"
+                    :selected-option="labelShowOverrideChoice"
+                    :options="labelShowOverrideOptions"
+                    label=""
+                    @update:selected-option="setLabelShowOverride($event)"
+                  />
+                  <span class="orb-gset__hint">
+                    {{
+                      _t(
+                        'Show or hide the caption of every object, line and worldmap marker on every board. Inherit lets each object decide; boards with their own setting still win.'
+                      )
+                    }}
+                  </span>
+                </label>
+              </div>
+
               <div
                 class="orb-gset__label-fields"
                 :class="{ 'orb-gset__label-fields--off': !form.label_show }"
@@ -309,6 +334,22 @@
                   field-size="FILL"
                 />
               </label>
+
+              <label class="orb-gset__label">
+                <span class="orb-gset__field-label">{{ _t('Label template') }}</span>
+                <CmkInput
+                  v-model="form.label_template"
+                  :placeholder="_t('e.g. {{name}} — {{label:SSB}}')"
+                  field-size="FILL"
+                />
+                <span class="orb-gset__hint">
+                  {{
+                    _t(
+                      'Caption for objects without a label text of their own. Boards can override it.'
+                    )
+                  }}
+                </span>
+              </label>
             </div>
           </CmkCollapsible>
         </section>
@@ -367,6 +408,7 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useSettingsStore } from '@/stores/settings'
 import type { GlobalSettings, LineStyle } from '@/types/api'
 import { boardTypeOptions, lineStyleOptions } from '@/utils/dropdownOptions'
+import { labelShowFromChoice, labelShowToChoice } from '@/utils/objectLabel'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
 const { _t } = usei18n()
@@ -376,12 +418,13 @@ const connectionsStore = useConnectionsStore()
 // Template fields are required (nullable) in the form so the v-model bindings
 // never carry ``undefined`` into the CMK inputs.
 type SettingsForm = GlobalSettings &
-  Required<Pick<GlobalSettings, 'hover_template' | 'context_template'>>
+  Required<Pick<GlobalSettings, 'hover_template' | 'context_template' | 'label_template'>>
 
 const form = reactive<SettingsForm>({
   ...store.settings,
   hover_template: store.settings.hover_template ?? null,
-  context_template: store.settings.context_template ?? null
+  context_template: store.settings.context_template ?? null,
+  label_template: store.settings.label_template ?? null
 })
 const saving = ref(false)
 const saveError = ref('')
@@ -419,6 +462,19 @@ const lineStyleOpts = computed(() => ({
   type: 'fixed' as const,
   suggestions: lineStyleOptions(_t)
 }))
+// Tri-state as a dropdown: CmkSwitch cannot express "leave it to the object".
+const labelShowOverrideOptions = computed(() => ({
+  type: 'fixed' as const,
+  suggestions: [
+    { name: 'inherit', title: _t('Inherit') },
+    { name: 'always', title: _t('Always show') },
+    { name: 'never', title: _t('Never show') }
+  ]
+}))
+const labelShowOverrideChoice = computed(() => labelShowToChoice(form.label_show_override))
+function setLabelShowOverride(choice: string | null): void {
+  form.label_show_override = labelShowFromChoice(choice)
+}
 const dirty = computed(() => JSON.stringify(form) !== JSON.stringify(store.settings))
 
 watch(

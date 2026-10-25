@@ -144,11 +144,11 @@
     </template>
     <!-- Optional caption label -->
     <div
-      v-if="object.label?.show && object.label?.text && state?.state !== 'NO_PERMISSION'"
+      v-if="labelVisible && labelText && state?.state !== 'NO_PERMISSION'"
       class="orb-obj__graph-caption"
       :style="labelStyle"
     >
-      {{ object.label.text }}
+      {{ labelText }}
     </div>
     <!-- Resize handle (edit mode only) -->
     <div
@@ -234,11 +234,11 @@
       />
     </div>
     <div
-      v-if="object.label?.show && state?.state !== 'NO_PERMISSION'"
+      v-if="labelVisible && state?.state !== 'NO_PERMISSION'"
       class="orb-obj__gadget-label"
       :style="labelStyle"
     >
-      {{ displayName }}
+      {{ labelText || displayName }}
     </div>
   </div>
 
@@ -460,12 +460,12 @@
     </div>
     <!-- Label -->
     <div
-      v-if="object.label?.show && state?.state !== 'NO_PERMISSION'"
+      v-if="labelVisible && state?.state !== 'NO_PERMISSION'"
       class="orb-obj__label"
       :class="isNagvisClassic ? '' : 'orb-obj__label--boxed'"
       :style="labelStyle"
     >
-      {{ displayName }}
+      {{ labelText || displayName }}
     </div>
   </div>
 </template>
@@ -485,6 +485,7 @@ import { useStatesStore } from '@/stores/states'
 import type { BoardObject, ObjectState } from '@/types/api'
 import { imageAssetUrl } from '@/utils/assetUrl'
 import { renderMetricValue } from '@/utils/metricFormat'
+import { type BoardLabelOptions, resolveLabelText, resolveLabelVisible } from '@/utils/objectLabel'
 import { utilColor as _utilColor, getMetric, parsePerfData, utilPercent } from '@/utils/perf'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
@@ -505,6 +506,10 @@ const props = defineProps<{
   resizeOverride?: { width: number; height: number } | undefined
   connectionId?: string
   renderMode?: 'default' | 'nagvis_classic'
+  // Board-wide label overrides, already merged with the global defaults by the
+  // canvas: `show` forces the caption on/off, `template` is the caption
+  // fallback for objects without a label text of their own.
+  labelOptions?: BoardLabelOptions
 }>()
 
 const isNagvisClassic = computed(() => props.renderMode === 'nagvis_classic')
@@ -1079,6 +1084,18 @@ const textOnlyStyle = computed(() => {
     transform: labelTransform.value
   }
 })
+
+const labelVisible = computed(() => resolveLabelVisible(props.object, props.labelOptions?.show))
+
+const labelText = computed(() =>
+  truncateLabel(resolveLabelText(props.object, props.state, props.labelOptions?.template))
+)
+
+function truncateLabel(text: string): string {
+  const maxlen = props.object.label_maxlen
+  if (maxlen && maxlen > 0 && text.length > maxlen) return text.slice(0, maxlen) + '…'
+  return text
+}
 
 const displayName = computed(() => {
   let name = props.object.group_name ?? props.object.id

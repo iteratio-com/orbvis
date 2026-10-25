@@ -511,6 +511,37 @@
                     field-size="FILL"
                   />
                 </div>
+                <div class="board-settings__field">
+                  <CmkLabel
+                    :help="
+                      _t(
+                        'Show or hide the caption of every object, line and worldmap marker on this board. Inherit leaves the decision with the global setting and each object.'
+                      )
+                    "
+                    >{{ _t('Object labels') }}</CmkLabel
+                  >
+                  <CmkDropdown
+                    :selected-option="form.label_show_override"
+                    :options="labelShowOptions"
+                    :label="_t('Object labels')"
+                    @update:selected-option="form.label_show_override = $event ?? 'inherit'"
+                  />
+                </div>
+                <div class="board-settings__field">
+                  <CmkLabel
+                    :help="
+                      _t(
+                        'Caption for objects without a label text of their own. Same placeholders as the hover template.'
+                      )
+                    "
+                    >{{ _t('Label template') }}</CmkLabel
+                  >
+                  <CmkInput
+                    v-model="form.label_template"
+                    :placeholder="_t('e.g. {{name}} — {{label:SSB}}')"
+                    field-size="FILL"
+                  />
+                </div>
               </div>
 
               <div
@@ -757,6 +788,7 @@ import type {
   WorldmapView
 } from '@/types/api'
 import { boardTypeOptions } from '@/utils/dropdownOptions'
+import { labelShowFromChoice, labelShowToChoice } from '@/utils/objectLabel'
 import { PREVIEW_EDIT, PREVIEW_READY } from '@/utils/previewBridge'
 import usei18n from '@/vendor/cmk/lib/i18n'
 
@@ -908,6 +940,8 @@ const form = ref({
   ft_sites: (ftv?.sites ?? []).join(', '),
   hover_template: props.board.hover_template ?? '',
   context_template: props.board.context_template ?? '',
+  label_show_override: labelShowToChoice(props.board.label_show_override) as string,
+  label_template: props.board.label_template ?? '',
   background_image: props.board.background_image ?? '',
   background_color: props.board.background_color ?? ''
 })
@@ -967,6 +1001,15 @@ const ftDefaultViewOptions = computed(() => ({
   suggestions: [
     { name: 'list', title: _t('List (tree)') },
     { name: 'map', title: _t('Map (treemap)') }
+  ]
+}))
+
+const labelShowOptions = computed(() => ({
+  type: 'fixed' as const,
+  suggestions: [
+    { name: 'inherit', title: _t('Inherit') },
+    { name: 'always', title: _t('Always show') },
+    { name: 'never', title: _t('Never show') }
   ]
 }))
 
@@ -1122,7 +1165,9 @@ async function save() {
         // metadata never clobbers the slide.
         ...(form.value.map_type === 'presentation' ? {} : { view }),
         hover_template: form.value.hover_template || null,
-        context_template: form.value.context_template || null
+        context_template: form.value.context_template || null,
+        label_show_override: labelShowFromChoice(form.value.label_show_override),
+        label_template: form.value.label_template || null
       },
       auth.accessToken!,
       localVersion.value
@@ -1217,6 +1262,8 @@ function postPreviewPatch() {
     icon_size: form.value.icon_size,
     hover_template: form.value.hover_template || '',
     context_template: form.value.context_template || '',
+    label_show_override: labelShowFromChoice(form.value.label_show_override),
+    label_template: form.value.label_template || '',
     background_color: form.value.background_color || null,
     // Presentation slides are designed on the canvas; a metadata-only view
     // would blank the slide in the preview iframe.

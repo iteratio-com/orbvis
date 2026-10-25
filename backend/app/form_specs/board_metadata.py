@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.form_specs import OrbDictGroup, OrbHostString
+from app.object_options import LABEL_SHOW_OVERRIDES
 
 from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import (
@@ -223,6 +224,41 @@ def board_metadata_spec(
                         "to work for users who already have view permission."
                     ),
                     prefill=DefaultValue(True),
+                ),
+            ),
+            "label_show_override": DictElement(
+                required=True,
+                group=_DISPLAY,
+                parameter_form=SingleChoice(
+                    title=Title("Object labels"),
+                    help_text=Help(
+                        "Show or hide the caption of every object, line and "
+                        "worldmap marker on this board. 'Inherit' (the default) "
+                        "leaves the decision with the global setting and, failing "
+                        "that, with each object; the other two apply to every "
+                        "object on this board."
+                    ),
+                    elements=[
+                        SingleChoiceElement(name=name, title=Title(title))
+                        for name, title in LABEL_SHOW_OVERRIDES
+                    ],
+                    prefill=DefaultValue("inherit"),
+                ),
+            ),
+            "label_template": DictElement(
+                group=_TEMPLATES,
+                parameter_form=String(
+                    title=Title("Label template"),
+                    help_text=Help(
+                        "Caption for every object on this board that has no label "
+                        "text of its own — an object's own text always wins. "
+                        "Leave unchecked to inherit the global label template. "
+                        "Same placeholders as the hover template, so "
+                        "'{{name}} — {{label:SSB}}' renders the object name plus "
+                        "the Checkmk label 'SSB'."
+                    ),
+                    prefill=InputHint("e.g. {{name}} — {{label:SSB}}"),
+                    field_size=FieldSize.LARGE,
                 ),
             ),
             "hover_template": DictElement(

@@ -29,3 +29,29 @@ LINE_STYLES: tuple[tuple[str, str], ...] = (
     ("arrow_both", "Arrows on both ends"),
     ("arrow_inward", "Arrows pointing inward"),
 )
+
+# Board-wide / instance-wide object-label override. Persisted as
+# ``bool | None`` (None = inherit); both FormSpecs show the same three choices.
+LABEL_SHOW_OVERRIDES: tuple[tuple[str, str], ...] = (
+    ("inherit", "Inherit"),
+    ("always", "Always show"),
+    ("never", "Never show"),
+)
+
+
+def label_show_override_to_choice(value: bool | None) -> str:
+    """Persisted ``bool | None`` → FormSpec choice name."""
+    if value is True:
+        return "always"
+    if value is False:
+        return "never"
+    return "inherit"
+
+
+def label_show_override_from_choice(choice: object) -> bool | None:
+    """FormSpec choice name → persisted ``bool | None``; unknown means inherit."""
+    if choice == "always":
+        return True
+    if choice == "never":
+        return False
+    return None

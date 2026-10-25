@@ -166,6 +166,36 @@ describe('WorldMapCanvas', () => {
     expect(leaflet.mapStub.remove).toHaveBeenCalledTimes(1)
   })
 
+  async function markerHtml(config: BoardConfig, states = sampleStates): Promise<string> {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().accessToken = 'token'
+    const wrapper = mount(WorldMapCanvas, {
+      props: { ...baseProps, config, states },
+      global: { plugins: [pinia] }
+    })
+    await flushPromises()
+    const html = leaflet.L.divIcon.mock.calls.map((c) => c[0]?.html ?? '').join('')
+    wrapper.unmount()
+    return html
+  }
+
+  it('captions a marker without label config with its name', async () => {
+    expect(await markerHtml(sampleConfig())).toContain('berlin-host')
+  })
+
+  it('hides marker captions when the board override says never', async () => {
+    const config = { ...sampleConfig(), label_show_override: false }
+    expect(await markerHtml(config)).not.toContain('berlin-host')
+  })
+
+  it('captions markers with the escaped board label template', async () => {
+    const config = { ...sampleConfig(), label_template: '{{host}} @ {{label:rack}}' }
+    const h1 = sampleStates.h1!
+    const html = await markerHtml(config, { h1: { ...h1, labels: { rack: '<b>R12</b>' } } })
+    expect(html).toContain('berlin-host @ &lt;b&gt;R12&lt;/b&gt;')
+  })
+
   it('unmounts cleanly even before the async mount setup resolved', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

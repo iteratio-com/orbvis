@@ -262,3 +262,38 @@ describe('BoardLine – bend (explicit midpoint)', () => {
     expect(wrapper.findAll('circle').length).toBe(3)
   })
 })
+
+describe('BoardLine – caption', () => {
+  const labelCfg = { x: 0, y: 0, size: 10, color: '#fff', background: 'transparent' }
+
+  function caption(
+    object: BoardObject,
+    labelOptions?: { show: boolean | null; template: string | null }
+  ) {
+    const state = { ...noState, labels: { SSB: '12-4' } }
+    const wrapper = mount(BoardLine, {
+      props: { object, state, editMode: false, ...(labelOptions ? { labelOptions } : {}) }
+    })
+    return wrapper.findAll('text').map((t) => t.text())
+  }
+
+  it('renders the label template for a line without its own text', () => {
+    const obj = makeLineObject({ label: { ...labelCfg, show: true } })
+    expect(caption(obj, { show: null, template: 'SSB {{label:SSB}}' })).toContain('SSB 12-4')
+  })
+
+  it('keeps the line text over the template', () => {
+    const obj = makeLineObject({ label: { ...labelCfg, show: true, text: 'Uplink' } })
+    expect(caption(obj, { show: null, template: 'SSB {{label:SSB}}' })).toEqual(['Uplink'])
+  })
+
+  it('shows the line text without board options', () => {
+    const obj = makeLineObject({ label: { ...labelCfg, show: true, text: 'Uplink' } })
+    expect(caption(obj)).toEqual(['Uplink'])
+  })
+
+  it('hides the caption when the board override says never', () => {
+    const obj = makeLineObject({ label: { ...labelCfg, show: true, text: 'Uplink' } })
+    expect(caption(obj, { show: false, template: null })).toEqual([])
+  })
+})

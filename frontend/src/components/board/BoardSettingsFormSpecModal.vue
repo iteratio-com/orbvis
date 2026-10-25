@@ -613,6 +613,7 @@ import type {
 import { openUrl } from '@/utils/boardNavigation'
 import { asFormSpecSchema } from '@/utils/formSpec'
 import { toFormValidation } from '@/utils/formValidation'
+import { labelShowFromChoice, labelShowToChoice } from '@/utils/objectLabel'
 import { PREVIEW_EDIT, PREVIEW_READY } from '@/utils/previewBridge'
 import { interpolateTemplate } from '@/utils/template'
 import usei18n from '@/vendor/cmk/lib/i18n'
@@ -789,6 +790,8 @@ if (props.board.icon_size != null) formSpecDataInitial.icon_size = props.board.i
 if (props.board.hover_template) formSpecDataInitial.hover_template = props.board.hover_template
 if (props.board.context_template)
   formSpecDataInitial.context_template = props.board.context_template
+formSpecDataInitial.label_show_override = labelShowToChoice(props.board.label_show_override)
+if (props.board.label_template) formSpecDataInitial.label_template = props.board.label_template
 const formSpecData = ref<Record<string, unknown>>(formSpecDataInitial)
 
 // Separate FormSpec data bag for the Flow `view` block. Same omit-when-null
@@ -1030,7 +1033,9 @@ async function save() {
         // board metadata never clobbers the slide.
         ...(form.value.map_type === 'presentation' ? {} : { view }),
         hover_template: ((fs.hover_template as string) ?? '') || null,
-        context_template: ((fs.context_template as string) ?? '') || null
+        context_template: ((fs.context_template as string) ?? '') || null,
+        label_show_override: labelShowFromChoice(fs.label_show_override as string | undefined),
+        label_template: ((fs.label_template as string) ?? '') || null
       },
       auth.accessToken!,
       localVersion.value
@@ -1266,6 +1271,8 @@ function buildPreviewPatch(): Record<string, unknown> {
     icon_size: (fs.icon_size as number | null | undefined) ?? null,
     hover_template: (fs.hover_template as string) ?? '',
     context_template: (fs.context_template as string) ?? '',
+    label_show_override: labelShowFromChoice(fs.label_show_override as string | undefined),
+    label_template: (fs.label_template as string) ?? '',
     background_color: form.value.background_color || null,
     // Presentation slides are designed on the canvas, not here — patching a
     // metadata-only ``view`` would blank the slide in the preview iframe.
@@ -1471,7 +1478,11 @@ onMounted(async () => {
     // coordinate-positioned icons that icon-size / layer / rendering touch.
     const drop = new Set<string>()
     if (form.value.map_type === 'radar') {
-      drop.add('hover_template').add('context_template')
+      drop
+        .add('hover_template')
+        .add('context_template')
+        .add('label_show_override')
+        .add('label_template')
     } else if (form.value.map_type === 'foldertree') {
       drop
         .add('icon_size')
@@ -1479,6 +1490,8 @@ onMounted(async () => {
         .add('render_mode')
         .add('hover_template')
         .add('context_template')
+        .add('label_show_override')
+        .add('label_template')
     } else if (form.value.map_type === 'presentation') {
       // The presentation board has no coordinate-positioned icons, no
       // hover/context popups and no per-object click action — slide design
@@ -1491,6 +1504,8 @@ onMounted(async () => {
         .add('hover_template')
         .add('context_template')
         .add('click_action')
+        .add('label_show_override')
+        .add('label_template')
     }
     if (drop.size) {
       const dict = spec as { elements?: { name: string }[] }

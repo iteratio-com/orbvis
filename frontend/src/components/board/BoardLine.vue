@@ -183,7 +183,7 @@
 
     <!-- label text at midpoint -->
     <text
-      v-if="props.object.label?.show && props.object.label?.text"
+      v-if="captionVisible && captionText"
       :x="midX"
       :y="midY - 10"
       text-anchor="middle"
@@ -197,7 +197,7 @@
         stroke-width: 3px;
         stroke-linejoin: round;
       "
-      >{{ props.object.label?.text }}</text
+      >{{ captionText }}</text
     >
 
     <!-- Edit handles. A bound endpoint's handle is nudged inward along the line
@@ -249,6 +249,7 @@ import { useMetricUnits } from '@/composables/useMetricUnits'
 import { splitPerfometerLabel, usePerfometer } from '@/composables/usePerfometer'
 import type { BoardObject, ObjectState } from '@/types/api'
 import { renderMetricValue } from '@/utils/metricFormat'
+import { type BoardLabelOptions, resolveLabelText, resolveLabelVisible } from '@/utils/objectLabel'
 import { getMetric, parsePerfData, utilColor, utilPercent } from '@/utils/perf'
 import { stateColor } from '@/utils/stateColors'
 
@@ -268,6 +269,8 @@ const props = defineProps<{
   // An active drag still wins so the operator sees the endpoint move.
   boundCoords?: { x?: number; y?: number; x2?: number; y2?: number }
   connectionId?: string | null
+  // Board-wide label overrides, merged with the global defaults by the canvas.
+  labelOptions?: BoardLabelOptions
 }>()
 
 defineEmits<{
@@ -277,6 +280,13 @@ defineEmits<{
   hover: [event: MouseEvent]
   'hover-leave': []
 }>()
+
+// Midpoint caption: the line's own label text, else the board label template.
+// Unlike icons, a line has no name to fall back to, so no text means no caption.
+const captionVisible = computed(() => resolveLabelVisible(props.object, props.labelOptions?.show))
+const captionText = computed(() =>
+  resolveLabelText(props.object, props.state, props.labelOptions?.template)
+)
 
 // Injected from BoardCanvas. Translates the line's native obj.x/y coords
 // into display-pixel coords so strokes, arrowheads, and text labels render
