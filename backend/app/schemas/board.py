@@ -5,9 +5,16 @@ from __future__ import annotations
 import re
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    Field,
+    field_validator,
+    model_validator,
+)
 
-from app.schemas._validators import validate_asset_ref, validate_user_url
+from app.schemas._validators import coerce_url_target, validate_asset_ref, validate_user_url
 from app.schemas.presentation import PresentationView
 
 _BackgroundRef = Annotated[str | None, AfterValidator(validate_asset_ref)]
@@ -412,7 +419,7 @@ class BoardObject(BaseModel):
     line_color: str | None = None
     line_color_border: str | None = None
     url: str | None = None
-    url_target: str = "_blank"
+    url_target: Annotated[str, BeforeValidator(coerce_url_target)] = "_blank"
     hover_url: str | None = None
     hover_template: str | None = None
     context_template: str | None = None
@@ -582,7 +589,7 @@ class BoardObjectUpdate(BaseModel):
     line_color: str | None = None
     line_color_border: str | None = None
     url: str | None = None
-    url_target: str | None = None
+    url_target: Annotated[str | None, BeforeValidator(coerce_url_target)] = None
     hover_url: str | None = None
     hover_template: str | None = None
     context_template: str | None = None

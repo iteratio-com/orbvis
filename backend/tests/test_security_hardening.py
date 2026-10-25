@@ -184,6 +184,22 @@ class TestAssetRefValidation:
         assert cfg.objects[0].display.image is None
 
 
+class TestUrlTargetNarrowing:
+    """Object links may open a new tab or stay in the frame, never replace the whole UI."""
+
+    @pytest.mark.parametrize("target", ["_top", "_parent", "named-frame", "_TOP"])
+    def test_folds_frame_escapes_to_blank(self, target: str) -> None:
+        assert BoardObject(id="o1", type="host", url_target=target).url_target == "_blank"
+        assert BoardObjectUpdate(url_target=target).url_target == "_blank"
+
+    @pytest.mark.parametrize("target", ["_blank", "_self", ""])
+    def test_keeps_allowed_targets(self, target: str) -> None:
+        assert BoardObject(id="o1", type="host", url_target=target).url_target == target
+
+    def test_update_without_target_stays_unset(self) -> None:
+        assert "url_target" not in BoardObjectUpdate().model_dump(exclude_unset=True)
+
+
 class TestSvgSafety:
     def test_strips_script_tag(self) -> None:
         bad = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'

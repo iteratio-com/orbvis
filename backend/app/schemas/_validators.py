@@ -19,6 +19,24 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _URL_SCHEME = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
 
 
+# A click-through link may open a new tab or stay in the same frame. _top,
+# _parent or a named frame would let an object link replace the whole Checkmk
+# UI with an external page (phishing).
+_ALLOWED_URL_TARGETS = frozenset({"_blank", "_self"})
+
+
+def coerce_url_target(value: object) -> object:
+    """Fold any link target other than ``_blank``/``_self`` to ``_blank``.
+
+    Coerces rather than rejects so boards stored with ``_top`` keep loading.
+    """
+    if value is None or value == "":
+        return value
+    if isinstance(value, str) and value in _ALLOWED_URL_TARGETS:
+        return value
+    return "_blank"
+
+
 def validate_user_url(value: str | None) -> str | None:
     """Allow scheme-less (relative) URLs plus the allowlisted schemes."""
     if not value:

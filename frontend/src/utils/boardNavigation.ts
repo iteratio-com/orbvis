@@ -142,7 +142,9 @@ export function openUrl(url: string, target: string): void {
   }
   const a = document.createElement('a')
   a.href = url
-  a.target = target
+  // _top/_parent would let a board link replace the whole Checkmk UI with an
+  // external page (phishing); mirrors coerce_url_target in the backend.
+  a.target = target === '_self' ? '_self' : '_blank'
   a.rel = 'noreferrer'
   document.body.appendChild(a)
   a.click()

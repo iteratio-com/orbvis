@@ -82,6 +82,22 @@ describe('openUrl', () => {
     expect(hrefs).toHaveLength(3)
   })
 
+  it('only opens a new tab or the same frame', () => {
+    const targets: string[] = []
+    const orig = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      targets.push(this.target)
+    }
+    try {
+      openUrl('https://example.com/x', '_top')
+      openUrl('https://example.com/x', '_parent')
+      openUrl('https://example.com/x', '_self')
+    } finally {
+      HTMLAnchorElement.prototype.click = orig
+    }
+    expect(targets).toEqual(['_blank', '_blank', '_self'])
+  })
+
   it('refuses javascript: URLs even with embedded control characters', () => {
     // Each refusal warns about the blocked scheme; capture it so the warning is
     // asserted rather than leaking to the console.

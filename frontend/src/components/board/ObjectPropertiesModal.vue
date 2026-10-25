@@ -1163,8 +1163,7 @@ const urlTargetOptions = computed(() => ({
   type: 'fixed' as const,
   suggestions: [
     { name: '_blank', title: _t('New tab') + ' (_blank)' },
-    { name: '_self', title: _t('Same tab') + ' (_self)' },
-    { name: '_top', title: _t('Top frame') + ' (_top)' }
+    { name: '_self', title: _t('Same tab') + ' (_self)' }
   ]
 }))
 

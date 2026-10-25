@@ -1251,9 +1251,6 @@ msgstr "Gleicher Tab"
 msgid "Automatically derived from Checkmk URL when left empty"
 msgstr "Automatisch aus Checkmk-URL abgeleitet wenn leer"
 
-msgid "Top frame"
-msgstr "Übergeordneter Frame"
-
 msgid "No objects found"
 msgstr "Keine Objekte gefunden"
 

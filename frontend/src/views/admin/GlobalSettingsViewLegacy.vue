@@ -173,8 +173,7 @@
                   v-model="form.url_target"
                   :options="[
                     { value: '_blank', label: _t('New tab') },
-                    { value: '_self', label: _t('Same tab') },
-                    { value: '_top', label: _t('Top frame') }
+                    { value: '_self', label: _t('Same tab') }
                   ]"
                 />
               </label>
